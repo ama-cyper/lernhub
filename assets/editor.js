@@ -820,6 +820,7 @@
     ]);
   }, 0);
   LH.hydrateImages(document);
+  if (document.readyState === 'complete') LH.prefetchImages(); else window.addEventListener('load', () => LH.prefetchImages());
   saveBtn.addEventListener('click', () => save());
   // App wechseln / Handy sperren: sofort speichern statt auf den Timer zu warten.
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && dirty) { writeDraft(); save(); } });

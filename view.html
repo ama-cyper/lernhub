@@ -33,12 +33,18 @@
 
   let html, sha, fromDraft = false;
   try {
-    const t = await LH.tree();
-    sha = t.get('lectures/' + file);
-    if (!sha) return fail('Diesen Lernreport gibt es nicht (mehr).');
     const draft = LH.drafts.get(file);
-    if (q.get('draft') === '1' && draft && draft.html) { html = draft.html; fromDraft = true; }
-    else html = await LH.readText('lectures/' + file, sha);
+    const useDraft = q.get('draft') === '1' && draft && draft.html;
+    // Dateiliste und Inhalt gleichzeitig anfragen statt nacheinander.
+    const [t, text] = await Promise.all([
+      LH.tree(),
+      useDraft ? Promise.resolve(draft.html) : LH.readText('lectures/' + file).catch(e => (e.status === 404 ? null : Promise.reject(e)))
+    ]);
+    sha = t.get('lectures/' + file);
+    if (!sha || text == null) return fail('Diesen Lernreport gibt es nicht (mehr).');
+    html = text; fromDraft = !!useDraft;
+    // Sicherstellen, dass Inhalt und Versionskennung zusammenpassen (sonst exakt diese Version nachladen).
+    if (!useDraft && await LH.gitSha(text) !== sha) html = await LH.readText('lectures/' + file, sha);
   } catch (e) {
     if (e.status === 401) { LH.logout(); location.replace('./?next=' + encodeURIComponent(location.pathname + location.search)); return; }
     const draft = LH.drafts.get(file);

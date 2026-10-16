@@ -78,8 +78,8 @@
 
   /* Alle Dateien des Repos mit ihren Versionskennungen (sha). */
   async function tree() {
-    const ref = await api(`${R}/git/ref/heads/${CFG.branch}`);
-    const t = await api(`${R}/git/trees/${ref.object.sha}?recursive=1`);
+    // Direkt über den Branch-Namen: eine Anfrage statt zwei.
+    const t = await api(`${R}/git/trees/${CFG.branch}?recursive=1`);
     const map = new Map();
     for (const e of t.tree) if (e.type === 'blob') map.set(e.path, e.sha);
     return map;
@@ -183,6 +183,15 @@
     if (!io) io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { io.unobserve(e.target); loadImg(e.target); } }), { rootMargin: '1200px 0px' });
     imgs.forEach(i => io.observe(i));
   }
+  /* Nach dem Laden alle übrigen Bilder still im Hintergrund holen (3 parallel),
+     damit beim Scrollen nichts mehr nachlädt. Beim zweiten Öffnen kommen sie
+     aus dem Gerätespeicher. */
+  function prefetchImages() {
+    const queue = [...document.querySelectorAll('img[data-gh-src]')].filter(i => !i._lhLoading);
+    const run = async () => { while (queue.length) { const i = queue.shift(); if (io) io.unobserve(i); await loadImg(i); } };
+    const go = () => { run(); run(); run(); };
+    if ('requestIdleCallback' in window) requestIdleCallback(go, { timeout: 1500 }); else setTimeout(go, 600);
+  }
   const loadAllImages = () => Promise.all([...document.querySelectorAll('img[data-gh-src]')].map(loadImg));
 
   /* Relative Bildpfade im Report-HTML auf das private Repo umbiegen. */
@@ -207,6 +216,13 @@
     }
     parts.push(html.slice(last));
     return { html: parts.join(''), files };
+  }
+  async function gitSha(text) {
+    const body = new TextEncoder().encode(text);
+    const head = new TextEncoder().encode('blob ' + body.length + '\0');
+    const all = new Uint8Array(head.length + body.length); all.set(head); all.set(body, head.length);
+    const d = new Uint8Array(await crypto.subtle.digest('SHA-1', all));
+    return [...d].map(x => x.toString(16).padStart(2, '0')).join('');
   }
   async function hashName(bytes, ext) {
     const d = new Uint8Array(await crypto.subtle.digest('SHA-1', bytes));
@@ -239,7 +255,7 @@
     CFG, APP, PIXEL, GHError,
     token: () => store.get(KEY), login, logout, verify,
     tree, readText, readJSON, putText, putImage, del, updateJSON, commitFiles,
-    imageURL, hydrateImages, loadAllImages, prepareImages, extractImages, hashName,
+    imageURL, hydrateImages, prefetchImages, loadAllImages, prepareImages, extractImages, hashName, gitSha,
     b64FromBytes, b64FromText, drafts,
     repoURL: `https://github.com/${CFG.owner}/${CFG.repo}`
   };
