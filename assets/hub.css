@@ -1,0 +1,423 @@
+/* ==========================================================================
+   Lernreport-Hub — Oberfläche der Startseite
+   --------------------------------------------------------------------------
+   Gestaltungsidee: „ruhiges Lesezimmer“. Warmes Papier als Grundfläche,
+   Serifen für alles Inhaltliche (Titel, Zahlen, Namen), eine schlanke
+   System-Sans für die Bedienelemente. Farbe trägt Bedeutung — jeder
+   Fachbereich hat seinen Ton, die Karten selbst bleiben neutral. Tiefe
+   entsteht durch Haarlinien und sehr weiche Schatten, nicht durch Rahmen.
+
+   Alle Größen, Farben, Radien und Schatten stehen als Variablen oben; im
+   Rest der Datei werden nur noch diese benutzt.
+   ========================================================================== */
+
+:root{
+  /* --- Flächen & Schrift ------------------------------------------------ */
+  --bg:#f7f4ee;              /* Grundfläche (warmes Papier)               */
+  --bg-2:#efeae1;            /* leicht vertiefte Fläche (Felder)          */
+  --paper:#fffefb;           /* Karten & Dialoge                          */
+  --ink:#1a1d24;             /* Haupttext                                 */
+  --ink-2:#3c424e;           /* zweite Ebene                              */
+  --mut:#767d8c;             /* Beschriftungen, Nebentext                 */
+  --line:#e4ddd0;            /* Haarlinie                                 */
+  --line-soft:#eee8dc;       /* noch leisere Trennung                     */
+  --on-accent:#fff;          /* Text auf gefüllter Akzentfläche           */
+
+  --accent:#0e7c66;
+  --accent-2:#b8860b;
+
+  /* --- Höhenstaffelung: drei Stufen, mehr braucht es nicht ------------- */
+  --e1:0 1px 1px rgba(52,40,18,.04), 0 2px 8px rgba(52,40,18,.045);
+  --e2:0 2px 4px rgba(52,40,18,.05), 0 12px 28px rgba(52,40,18,.10);
+  --e3:0 8px 20px rgba(52,40,18,.10), 0 32px 64px rgba(52,40,18,.20);
+
+  /* --- Radien, Takt, Bewegung ------------------------------------------ */
+  --r-xs:9px; --r-sm:12px; --r:17px; --r-lg:22px; --pill:999px;
+  --ease:cubic-bezier(.2,.7,.3,1);
+  --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,"Times New Roman",serif;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#12141a; --bg-2:#1a1d25; --paper:#1b1f28;
+    --ink:#eceef3; --ink-2:#c3c8d3; --mut:#8e97a7;
+    --line:#2b3040; --line-soft:#242936;
+    --on-accent:#0f1218;
+    --accent:#3fbfa3; --accent-2:#d9a441;
+    --e1:0 1px 1px rgba(0,0,0,.3), 0 2px 8px rgba(0,0,0,.28);
+    --e2:0 2px 4px rgba(0,0,0,.3), 0 12px 28px rgba(0,0,0,.45);
+    --e3:0 8px 20px rgba(0,0,0,.4), 0 32px 64px rgba(0,0,0,.6);
+  }
+}
+
+/* ---- Farbwelten der Fachbereiche ----------------------------------------
+   Gleiche Sättigung, gleiche Helligkeit — unterschiedlicher Farbton.
+   Dadurch unterscheidbar, aber nebeneinander ruhig.                        */
+.t-teal  {--accent:#0e7c66; --accent-2:#b8860b;}
+.t-indigo{--accent:#44579e; --accent-2:#8f7ac2;}
+.t-plum  {--accent:#7c3f7e; --accent-2:#c07aa8;}
+.t-amber {--accent:#a2620f; --accent-2:#d9a441;}
+.t-rose  {--accent:#b23a55; --accent-2:#e0857a;}
+.t-forest{--accent:#43722b; --accent-2:#9bbf5a;}
+.t-ocean {--accent:#1f6f8b; --accent-2:#54b0c4;}
+.t-clay  {--accent:#a05a3c; --accent-2:#d2a06b;}
+@media (prefers-color-scheme:dark){
+  .t-teal  {--accent:#3fbfa3; --accent-2:#d9a441;}
+  .t-indigo{--accent:#8195dd; --accent-2:#b3a4e0;}
+  .t-plum  {--accent:#c583c6; --accent-2:#e0a8c8;}
+  .t-amber {--accent:#e0a145; --accent-2:#f0c97a;}
+  .t-rose  {--accent:#e8788e; --accent-2:#f2ab9e;}
+  .t-forest{--accent:#8fc767; --accent-2:#c0dc94;}
+  .t-ocean {--accent:#5cb8d4; --accent-2:#8fd6e4;}
+  .t-clay  {--accent:#dd9670; --accent-2:#eabf95;}
+}
+
+/* ================= Grundlage ================= */
+*{box-sizing:border-box;}
+html{scroll-behavior:smooth;background:var(--bg);}
+body{
+  margin:0;color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.6;
+  padding:0 0 72px;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  /* Zwei sehr weiche Farbschleier am oberen Rand geben der Seite Tiefe,
+     ohne dass ein Bild geladen werden muss. „fixed“ hält sie beim Scrollen
+     an ihrem Platz — die Seite wirkt dadurch ruhiger.                     */
+  background:
+    radial-gradient(760px 420px at 8% -10%, color-mix(in srgb,var(--accent) 13%,transparent), transparent 70%) no-repeat fixed,
+    radial-gradient(680px 380px at 92% -16%, color-mix(in srgb,var(--accent-2) 11%,transparent), transparent 72%) no-repeat fixed,
+    var(--bg);
+}
+.wrap{max-width:1140px;margin:0 auto;padding:0 24px;}
+::selection{background:color-mix(in srgb,var(--accent) 26%,transparent);}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+[hidden]{display:none !important;}
+
+/* ================= Kopfleiste ================= */
+.topbar{position:sticky;top:0;z-index:40;border-bottom:1px solid transparent;
+  background:color-mix(in srgb,var(--bg) 78%,transparent);
+  backdrop-filter:saturate(180%) blur(14px);-webkit-backdrop-filter:saturate(180%) blur(14px);
+  transition:border-color .2s,box-shadow .2s,background .2s;}
+@supports not (backdrop-filter:blur(1px)){.topbar{background:var(--bg);}}
+/* Erst beim Scrollen bekommt die Leiste eine Kante — vorher schwebt sie frei. */
+.topbar.scrolled{border-bottom-color:var(--line);box-shadow:0 1px 12px rgba(52,40,18,.06);}
+.topbar-in{max-width:1140px;margin:0 auto;padding:11px 24px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--serif);font-size:1.06rem;
+  font-weight:700;color:var(--ink);text-decoration:none;white-space:nowrap;letter-spacing:-.01em;}
+.brand-mark{display:grid;place-items:center;width:28px;height:28px;border-radius:9px;font-size:.72rem;
+  color:var(--on-accent);background:linear-gradient(145deg,var(--accent),var(--accent-2));
+  box-shadow:0 2px 8px color-mix(in srgb,var(--accent) 40%,transparent);}
+.topbar-actions{display:flex;gap:8px;align-items:center;margin-left:auto;}
+
+.search{position:relative;flex:1 1 220px;min-width:170px;max-width:400px;}
+.search input{width:100%;height:38px;padding:0 74px 0 36px;border:1px solid var(--line);border-radius:var(--pill);
+  background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:.92rem;
+  transition:border-color .15s,box-shadow .15s,background .15s;}
+.search input::placeholder{color:var(--mut);}
+.search input:focus{outline:none;border-color:color-mix(in srgb,var(--accent) 55%,var(--line));
+  box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 14%,transparent);}
+.search input::-webkit-search-cancel-button{display:none;}
+.search-ic{position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--mut);
+  font-size:1.1rem;pointer-events:none;}
+/* Tastenkürzel-Hinweis: verschwindet, sobald das Feld benutzt wird. */
+.search-kbd{position:absolute;right:11px;top:50%;transform:translateY(-50%);pointer-events:none;
+  font-family:var(--sans);font-size:.68rem;font-weight:700;color:var(--mut);background:var(--bg-2);
+  border:1px solid var(--line);border-radius:6px;padding:2px 6px;line-height:1.3;transition:opacity .15s;}
+.search:focus-within .search-kbd{opacity:0;}
+.search:has(.search-clear:not([hidden])) .search-kbd{display:none;}
+.search-clear{position:absolute;right:7px;top:50%;transform:translateY(-50%);border:none;background:transparent;
+  color:var(--mut);cursor:pointer;font-size:1.15rem;line-height:1;padding:3px 8px;border-radius:50%;}
+.search-clear:hover{background:var(--bg-2);color:var(--ink);}
+
+/* ================= Schaltflächen ================= */
+.btn{font-family:var(--sans);font-size:.87rem;font-weight:600;border:1px solid var(--line);
+  background:var(--paper);color:var(--ink);border-radius:var(--pill);padding:9px 16px;cursor:pointer;
+  box-shadow:var(--e1);text-decoration:none;display:inline-flex;align-items:center;gap:6px;
+  white-space:nowrap;transition:transform .1s var(--ease),box-shadow .18s,border-color .18s,background .18s,color .18s;}
+.btn:hover{transform:translateY(-1px);box-shadow:var(--e2);border-color:color-mix(in srgb,var(--ink) 14%,var(--line));}
+.btn:active{transform:translateY(0);box-shadow:var(--e1);}
+.btn.primary{background:var(--accent);color:var(--on-accent);border-color:transparent;
+  box-shadow:0 1px 2px color-mix(in srgb,var(--accent) 30%,transparent),
+             0 6px 16px color-mix(in srgb,var(--accent) 26%,transparent);}
+.btn.primary:hover{border-color:transparent;
+  box-shadow:0 2px 4px color-mix(in srgb,var(--accent) 34%,transparent),
+             0 12px 26px color-mix(in srgb,var(--accent) 30%,transparent);}
+.btn.ghost{background:transparent;box-shadow:none;border-color:transparent;color:var(--mut);}
+.btn.ghost:hover{color:var(--ink);background:var(--paper);border-color:var(--line);box-shadow:var(--e1);}
+.btn.quiet{background:transparent;border-color:var(--line);box-shadow:none;color:var(--ink-2);}
+.btn.quiet:hover{background:var(--paper);box-shadow:var(--e1);}
+.btn.danger{color:#c0392b;}
+
+.icon-btn{border:1px solid transparent;background:transparent;color:var(--mut);cursor:pointer;
+  width:30px;height:30px;display:inline-grid;place-items:center;font-size:.92rem;line-height:1;
+  border-radius:var(--r-xs);font-family:var(--sans);transition:background .14s,color .14s,border-color .14s;}
+.icon-btn:hover{background:var(--paper);border-color:var(--line);color:var(--ink);}
+.icon-btn.danger:hover{color:#c0392b;border-color:color-mix(in srgb,#c0392b 30%,transparent);
+  background:color-mix(in srgb,#c0392b 8%,transparent);}
+
+/* ================= Kopfbereich der Seite ================= */
+.hero{position:relative;display:grid;gap:34px;padding:52px 0 30px;
+  grid-template-columns:minmax(0,1fr) 244px;align-items:start;}
+/* Feines Punktraster als Textur — nach außen ausgeblendet, damit es
+   nirgends „abgeschnitten“ aussieht.                                      */
+.hero::before{content:"";position:absolute;inset:-30px -60px 10px;z-index:0;pointer-events:none;
+  background-image:radial-gradient(currentColor 1px, transparent 1.2px);
+  background-size:20px 20px;color:var(--ink);opacity:.055;
+  -webkit-mask-image:radial-gradient(78% 72% at 26% 24%, #000, transparent 76%);
+          mask-image:radial-gradient(78% 72% at 26% 24%, #000, transparent 76%);}
+.hero > *{position:relative;z-index:1;}
+
+.eyebrow{display:flex;align-items:center;gap:9px;letter-spacing:.19em;text-transform:uppercase;
+  font-size:.69rem;color:var(--accent);font-weight:700;}
+.eyebrow::before{content:"";width:22px;height:2px;border-radius:2px;flex:0 0 auto;
+  background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 15%,transparent));}
+.hero h1{font-family:var(--serif);font-size:clamp(2.3rem,4.6vw,3.15rem);line-height:1.07;
+  margin:14px 0 12px;letter-spacing:-.022em;font-weight:600;}
+.hero h1 em{font-style:italic;color:var(--accent);}
+.hero .lead{color:var(--ink-2);font-size:1.05rem;max-width:44ch;margin:0;}
+.hero-hint{display:flex;align-items:center;gap:8px;margin:20px 0 0;color:var(--mut);font-size:.83rem;}
+.hero-hint .ic{display:grid;place-items:center;width:22px;height:22px;border-radius:7px;flex:0 0 auto;
+  background:var(--bg-2);border:1px solid var(--line);font-size:.72rem;}
+
+/* Kennzahlen als kleine Karten — die Zahl trägt die Serifenschrift,
+   damit sie zum Titel gehört und nicht zur Bedienoberfläche. */
+.stats{display:grid;gap:10px;grid-template-columns:1fr;}
+.stat{position:relative;overflow:hidden;background:var(--paper);border:1px solid var(--line);
+  border-radius:var(--r-sm);padding:13px 15px 12px;box-shadow:var(--e1);
+  display:flex;flex-direction:column;gap:1px;}
+.stat::before{content:"";position:absolute;left:0;top:12px;bottom:12px;width:3px;border-radius:0 3px 3px 0;
+  background:linear-gradient(180deg,var(--accent),var(--accent-2));opacity:.85;}
+.stat b{font-family:var(--serif);font-size:1.85rem;line-height:1.05;font-weight:600;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;}
+.stat span{font-size:.68rem;color:var(--mut);text-transform:uppercase;letter-spacing:.11em;font-weight:700;}
+
+/* ================= Fachbereiche ================= */
+.folder{margin:0 0 32px;}
+.folder-head{display:flex;align-items:center;gap:11px;padding:11px 12px 11px 13px;border-radius:var(--r-sm);
+  background:color-mix(in srgb,var(--accent) 5%,var(--paper));
+  border:1px solid color-mix(in srgb,var(--accent) 17%,var(--line));
+  box-shadow:var(--e1);cursor:pointer;touch-action:pan-y;user-select:none;
+  transition:border-color .16s,box-shadow .16s,background .16s;}
+.folder-head:hover{box-shadow:var(--e2);border-color:color-mix(in srgb,var(--accent) 34%,var(--line));}
+.folder.root > .folder-head{background:transparent;box-shadow:none;cursor:default;
+  border:1px dashed var(--line);}
+.folder.root > .folder-head:hover{box-shadow:none;border-color:var(--line);}
+
+.folder-dot{width:20px;height:20px;border-radius:7px;flex:0 0 auto;
+  background:linear-gradient(145deg,var(--accent),var(--accent-2));
+  box-shadow:0 2px 7px color-mix(in srgb,var(--accent) 35%,transparent);}
+.folder.root .folder-dot{background:none;border:2px dashed var(--mut);opacity:.45;box-shadow:none;}
+.folder-name{font-family:var(--serif);font-size:1.18rem;margin:0;font-weight:600;letter-spacing:-.012em;
+  flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.folder.root .folder-name{font-family:var(--sans);font-size:.74rem;text-transform:uppercase;
+  letter-spacing:.13em;color:var(--mut);font-weight:700;}
+.folder-count{font-size:.72rem;font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums;
+  background:color-mix(in srgb,var(--accent) 13%,transparent);border-radius:var(--pill);padding:3px 10px;}
+.folder.root .folder-count{color:var(--mut);background:var(--bg-2);}
+/* Haarlinie füllt den Platz zwischen Namen und Werkzeugen. */
+.folder-rule{flex:1 1 auto;height:1px;min-width:12px;
+  background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 22%,transparent),transparent);}
+.folder.root .folder-rule{background:linear-gradient(90deg,var(--line),transparent);}
+/* Werkzeuge halten sich zurück, bis man die Zeile berührt. */
+.folder-actions{display:flex;gap:2px;opacity:0;transition:opacity .16s;}
+.folder-head:hover .folder-actions,
+.folder-head:focus-within .folder-actions{opacity:1;}
+
+/* Zugeklappt: eine angedeutete zweite Kante unter der Zeile zeigt, dass
+   darunter noch etwas liegt — sonst unterscheidet sich „zu“ von „auf“ nur
+   durch das gedrehte Dreieck. */
+.folder.collapsed > .folder-head{position:relative;}
+.folder.collapsed > .folder-head::after{content:"";position:absolute;left:13px;right:13px;bottom:-5px;
+  height:5px;border-radius:0 0 11px 11px;pointer-events:none;
+  background:color-mix(in srgb,var(--accent) 7%,var(--paper));
+  border:1px solid color-mix(in srgb,var(--accent) 15%,var(--line));border-top:none;}
+
+.fold-toggle{border:none;background:transparent;color:var(--ink-2);cursor:pointer;font-size:.85rem;line-height:1;
+  width:24px;height:24px;display:grid;place-items:center;border-radius:7px;flex:0 0 auto;
+  transition:transform .22s var(--ease),background .14s,color .14s;}
+.fold-toggle:hover{background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--ink);}
+.folder.collapsed .fold-toggle{transform:rotate(-90deg);}
+.folder.collapsed > .folder-body{display:none;}
+.folder.drop-target > .folder-head{border-color:var(--accent);
+  background:color-mix(in srgb,var(--accent) 11%,var(--paper));
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 20%,transparent);}
+
+/* ================= Karten ================= */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:18px;margin:16px 0 0;}
+.grid:empty{min-height:92px;border:1.5px dashed var(--line);border-radius:var(--r);
+  color:var(--mut);font-size:.85rem;place-items:center;text-align:center;padding:12px 22px;
+  background:color-mix(in srgb,var(--paper) 45%,transparent);}
+.grid:empty::before{content:attr(data-hint);max-width:44ch;}
+/* Ist alles einsortiert, verschwindet „Ohne Ordner“ ganz — es hätte oben auf
+   der Seite nichts zu sagen. Sobald etwas gezogen wird, taucht die
+   Ablagefläche wieder auf, damit man einen Report herausnehmen kann. */
+.folder.root .grid:empty{min-height:52px;font-size:.79rem;opacity:.7;background:none;}
+.folder.root.tidy > .folder-head{display:none;}
+.folder.root.tidy{margin-bottom:0;}
+.folder.root.tidy .grid:empty{display:none;}
+body.dnd .folder.root.tidy{margin-bottom:24px;}
+body.dnd .folder.root.tidy .grid:empty{display:grid;}
+
+.card{position:relative;overflow:hidden;background:var(--paper);border:1px solid var(--line);
+  border-radius:var(--r);padding:22px 22px 16px;box-shadow:var(--e1);display:flex;flex-direction:column;
+  touch-action:pan-y;transition:transform .16s var(--ease),box-shadow .2s,border-color .2s;}
+/* Farbstreifen oben: gehört zum Fachbereich, tritt beim Zeigen hervor. */
+.card::before{content:"";position:absolute;top:0;left:0;right:0;height:3px;opacity:.6;
+  background:linear-gradient(90deg,var(--accent),var(--accent-2));transition:opacity .2s;}
+/* Sehr weicher Farbschimmer in der Ecke — gibt jedem Fach seinen Ton. */
+.card::after{content:"";position:absolute;top:-70px;right:-70px;width:190px;height:190px;border-radius:50%;
+  pointer-events:none;background:radial-gradient(closest-side,color-mix(in srgb,var(--accent) 15%,transparent),transparent);
+  opacity:.75;transition:opacity .25s;}
+.card:hover{transform:translateY(-3px);box-shadow:var(--e2);
+  border-color:color-mix(in srgb,var(--accent) 32%,var(--line));}
+.card:hover::before{opacity:1;}
+.card:hover::after{opacity:1;}
+
+/* Die Herkunftszeile bleibt einzeilig — sonst schwankt die Höhe der Karten
+   und der Titel verliert seinen Rang. Der volle Text steht im Tooltip. */
+.card .eyebrow{font-size:.63rem;letter-spacing:.14em;gap:7px;}
+.card .eyebrow::before{width:14px;}
+.card .eyebrow span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.card h3{font-family:var(--serif);font-size:1.24rem;line-height:1.24;margin:10px 0 8px;font-weight:600;
+  letter-spacing:-.014em;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
+/* Kein flex:1 — das hebelt -webkit-line-clamp aus. Die Knopfreihe schiebt
+   sich stattdessen per margin-top:auto nach unten. */
+.card .lead{color:var(--mut);font-size:.875rem;line-height:1.55;margin:0 0 16px;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
+.card .meta{display:flex;align-items:center;gap:8px;margin:auto 0 0;padding:0 0 12px;
+  font-size:.71rem;color:var(--mut);min-width:0;}
+.card .chip{background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent);
+  border-radius:var(--pill);padding:3px 9px;font-weight:700;white-space:nowrap;flex:0 0 auto;
+  font-variant-numeric:tabular-nums;}
+.card .fname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:.85;font-size:.7rem;}
+.card .row{display:flex;align-items:center;gap:7px;padding-top:13px;border-top:1px solid var(--line-soft);
+  flex-wrap:wrap;}
+.card .row .btn{padding:8px 15px;font-size:.84rem;}
+.card-tools{margin-left:auto;display:flex;gap:2px;opacity:0;transition:opacity .16s;}
+.card:hover .card-tools,
+.card:focus-within .card-tools{opacity:1;}
+.drag-handle{position:absolute;top:10px;right:11px;color:var(--mut);font-size:1rem;line-height:1;
+  cursor:grab;opacity:0;transition:opacity .16s;touch-action:none;user-select:none;letter-spacing:-2px;
+  padding:2px 3px;border-radius:6px;z-index:2;}
+.card:hover .drag-handle{opacity:.55;}
+.drag-handle:hover{opacity:1 !important;background:var(--bg-2);}
+.drag-handle:active{cursor:grabbing;}
+@media (hover:none){.card-tools,.drag-handle{opacity:1;}}
+
+/* ================= Ziehen ================= */
+body.dnd{user-select:none;cursor:grabbing;}
+body.dnd .card:hover{transform:none;box-shadow:var(--e1);border-color:var(--line);}
+.drag-source{opacity:.3;filter:saturate(.3);}
+.drag-ghost{position:fixed;top:0;left:0;z-index:1000;pointer-events:none;margin:0;
+  box-shadow:var(--e3);opacity:.97;cursor:grabbing;}
+.folder-dnd .folder-body{display:none;}
+.folder-dnd .folder{margin:0 0 10px;}
+
+/* ================= Leerzustände / Fußzeile ================= */
+.empty{text-align:center;color:var(--mut);padding:52px 24px;border:1.5px dashed var(--line);
+  border-radius:var(--r);margin:28px 0;display:flex;flex-direction:column;align-items:center;gap:7px;
+  background:color-mix(in srgb,var(--paper) 45%,transparent);}
+.empty .empty-ic{display:grid;place-items:center;width:46px;height:46px;border-radius:14px;margin-bottom:6px;
+  background:var(--bg-2);border:1px solid var(--line);font-size:1.25rem;}
+.empty b{color:var(--ink);font-size:1.1rem;font-family:var(--serif);font-weight:600;}
+.empty span{font-size:.89rem;max-width:46ch;}
+footer{text-align:center;color:var(--mut);font-size:.79rem;margin:60px 0 10px;padding-top:24px;
+  border-top:1px solid var(--line);}
+footer a{color:var(--accent);text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--accent) 35%,transparent);}
+footer a:hover{border-bottom-color:var(--accent);}
+.foot-sep{opacity:.45;margin:0 8px;}
+
+/* ================= Dialoge ================= */
+dialog{border:none;border-radius:var(--r-lg);padding:0;box-shadow:var(--e3);max-width:540px;width:92%;
+  background:var(--paper);color:var(--ink);}
+dialog::backdrop{background:rgba(24,18,8,.5);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);}
+dialog[open]{animation:dlgIn .24s var(--ease);}
+@keyframes dlgIn{from{opacity:0;transform:translateY(10px) scale(.985);}}
+@media (prefers-reduced-motion:reduce){dialog[open]{animation:none;}}
+.dlg-in{padding:26px 28px 24px;}
+.dlg-in h3{font-family:var(--serif);margin:0 0 6px;font-size:1.45rem;font-weight:600;letter-spacing:-.015em;}
+.dlg-in p{color:var(--mut);font-size:.9rem;margin:6px 0 16px;}
+.dlg-row{display:flex;gap:10px;justify-content:flex-end;margin-top:22px;}
+.field{width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:var(--r-xs);
+  background:var(--bg-2);color:var(--ink);font-family:var(--sans);font-size:.95rem;margin-top:5px;
+  transition:border-color .15s,box-shadow .15s;}
+.field:focus{outline:none;border-color:color-mix(in srgb,var(--accent) 55%,var(--line));
+  box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 14%,transparent);}
+.fieldlabel{display:block;margin-top:18px;font-size:.7rem;font-weight:700;color:var(--mut);
+  letter-spacing:.11em;text-transform:uppercase;}
+.dropzone{border:1.5px dashed color-mix(in srgb,var(--accent) 45%,var(--line));border-radius:var(--r);
+  padding:34px;text-align:center;color:var(--mut);font-size:.92rem;margin:8px 0 0;cursor:pointer;
+  background:color-mix(in srgb,var(--accent) 4%,var(--bg-2));transition:background .16s,border-color .16s;}
+.dropzone .dz-ic{font-size:1.6rem;display:block;margin-bottom:8px;}
+.dropzone:hover{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,var(--bg-2));}
+.dropzone.hot{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,var(--bg-2));
+  color:var(--ink);}
+.swatches{display:flex;gap:9px;flex-wrap:wrap;margin-top:9px;}
+.swatch{width:32px;height:32px;border-radius:10px;border:2px solid transparent;cursor:pointer;padding:0;
+  background:linear-gradient(145deg,var(--accent),var(--accent-2));
+  transition:transform .12s var(--ease),box-shadow .16s;}
+.swatch:hover{transform:scale(1.09);}
+.swatch[aria-pressed="true"]{border-color:var(--paper);
+  box-shadow:0 0 0 2px var(--ink), 0 2px 8px color-mix(in srgb,var(--accent) 40%,transparent);}
+
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(6px);
+  display:flex;align-items:center;gap:9px;background:var(--ink);color:var(--paper);
+  padding:11px 20px;border-radius:var(--pill);font-size:.86rem;font-weight:600;box-shadow:var(--e3);
+  opacity:0;transition:opacity .25s,transform .25s var(--ease);pointer-events:none;z-index:60;}
+.toast::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--accent-2);flex:0 0 auto;}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(-2px);}
+
+/* ================= Suche ================= */
+.card.filtered{display:none;}
+.folder.filtered{display:none;}
+
+/* ================= Schmale Fenster ================= */
+@media (max-width:900px){
+  .hero{grid-template-columns:1fr;gap:26px;padding:38px 0 24px;}
+  .stats{grid-template-columns:repeat(3,minmax(0,1fr));}
+  .stat b{font-size:1.6rem;}
+}
+@media (max-width:640px){
+  .wrap{padding:0 16px;}
+  .topbar-in{padding:10px 16px;gap:10px;}
+  .hero{padding:28px 0 18px;}
+  .hero .lead{font-size:.98rem;}
+  .topbar-actions{margin-left:0;width:100%;}
+  .topbar-actions .btn{flex:1 1 auto;justify-content:center;}
+  .search{max-width:none;order:3;width:100%;flex-basis:100%;}
+  .grid{grid-template-columns:1fr;}
+  .stats{gap:8px;}
+  .stat{padding:11px 12px;}
+  .stat b{font-size:1.45rem;}
+  .stat span{font-size:.62rem;letter-spacing:.09em;}
+}
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto;}
+  *{transition-duration:.01ms !important;animation-duration:.01ms !important;}
+}
+
+/* ==== GitHub-Version: Anmeldung, Sync-Status ==================================== */
+body.locked > :not(.login):not(.toast){display:none !important;}
+.login{min-height:100vh;display:grid;place-items:center;padding:24px 16px;background:var(--bg);}
+.login[hidden]{display:none;}
+.login-card{width:100%;max-width:440px;background:var(--paper);border:1px solid var(--line-soft);
+  border-radius:var(--r-lg);box-shadow:var(--e2);padding:28px 24px;font-family:var(--sans);color:var(--ink);}
+.login-card .eyebrow{font-size:.7rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);}
+.login-card h2{font-family:var(--serif);font-weight:600;font-size:1.6rem;margin:6px 0 10px;}
+.login-card p{color:var(--ink-2);line-height:1.55;margin:0 0 6px;font-size:.95rem;}
+.login-card .btn{width:100%;justify-content:center;margin-top:14px;}
+.login-card .check{display:block;margin-top:14px;font-size:.92rem;color:var(--ink-2);}
+.login-card .check input{margin-right:6px;accent-color:var(--accent);}
+.login-card .check small{display:block;color:var(--mut);margin:3px 0 0 22px;line-height:1.4;}
+.login-err{color:#c0392b !important;font-weight:600;min-height:1.2em;margin-top:10px !important;}
+.login-help{margin-top:18px;font-size:.9rem;color:var(--ink-2);}
+.login-help summary{cursor:pointer;font-weight:700;color:var(--accent);}
+.login-help ol{padding-left:20px;line-height:1.55;}
+.login-help code{background:var(--bg-2);padding:1px 6px;border-radius:6px;}
+#sync{font-variant-numeric:tabular-nums;}
+#sync.bad{color:#c0392b;font-weight:700;}
+.dropzone.busy{pointer-events:none;opacity:.6;}
+.dropzone.busy::after{content:attr(data-msg);display:block;margin-top:8px;font-weight:700;}
+.linkbtn{background:none;border:0;padding:0;font:inherit;color:var(--accent);font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:2px;}
+.wrap{overflow-x:clip;}

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Lernhub Anleitung</title>
+<link rel="stylesheet" href="assets/hub.css">
+<style>
+  .doc{max-width:720px;margin:0 auto;padding:32px 16px 64px;font-family:var(--sans);color:var(--ink);}
+  .doc h1{font-family:var(--serif);font-weight:600;font-size:2rem;margin:.2em 0 .3em;}
+  .doc h2{font-family:var(--serif);font-weight:600;font-size:1.3rem;margin:1.8em 0 .4em;}
+  .doc p,.doc li{line-height:1.6;color:var(--ink-2);}
+  .doc ol,.doc ul{padding-left:22px;}
+  .doc code{background:var(--bg-2);padding:1px 6px;border-radius:6px;}
+  .doc .eyebrow{font-size:.7rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);}
+  .doc .box{background:var(--paper);border:1px solid var(--line-soft);border-radius:var(--r);padding:14px 18px;box-shadow:var(--e1);margin:14px 0;}
+  .doc a{color:var(--accent);font-weight:600;}
+</style>
+</head>
+<body>
+<div class="doc">
+  <a href="./">← Zum Hub</a>
+  <div class="eyebrow" style="margin-top:18px">Lernreport-Hub</div>
+  <h1>So funktioniert’s</h1>
+
+  <h2>Wo liegen meine Reports?</h2>
+  <p>Alle Lernreports und Bilder liegen im <b>privaten</b> GitHub-Repo <code>lernhub-daten</code>. Diese Seite ist nur
+    die Bedienoberfläche. Sie enthält selbst keine Inhalte und lädt alles erst nach der Anmeldung mit deinem Schlüssel.
+    Ohne Schlüssel bekommt man von GitHub nur „nicht gefunden“.</p>
+
+  <h2>Neues Gerät einrichten</h2>
+  <ol>
+    <li>Diese Seite öffnen (am Handy: Teilen → „Zum Home-Bildschirm“, dann wirkt sie wie eine App).</li>
+    <li>Zugangsschlüssel aus dem Passwortmanager einfügen → <b>Anmelden</b>.</li>
+    <li>Auf fremden Rechnern „Auf diesem Gerät merken“ abhaken und am Ende auf <b>Abmelden</b> tippen.</li>
+  </ol>
+  <div class="box"><b>Schlüssel verloren oder abgelaufen?</b> Auf
+    <a href="https://github.com/settings/personal-access-tokens" target="_blank" rel="noopener">GitHub → Fine-grained tokens</a>
+    den alten löschen und einen neuen erstellen: nur Repo <code>lernhub-daten</code>, Recht „Contents: Read and write“.</div>
+
+  <h2>Bearbeiten und Speichern</h2>
+  <ul>
+    <li>„Bearbeiten“ öffnet den Editor. Er speichert automatisch ein paar Sekunden nach der letzten Änderung,
+      und sofort, wenn du die App wechselst oder das Handy sperrst.</li>
+    <li>Jede Speicherung ist ein eigener Stand. Auf GitHub siehst du unter <b>History</b> jede Version und kannst jede wiederherstellen.</li>
+    <li>Ohne Internet bleibt deine Änderung als Entwurf auf dem Gerät. Beim nächsten Öffnen bietet der Editor an, sie wiederherzustellen.</li>
+  </ul>
+
+  <h2>Zwei Geräte gleichzeitig</h2>
+  <p>Wurde ein Report inzwischen auf einem anderen Gerät geändert, überschreibt der Editor nichts. Du bekommst die Wahl:
+    <b>Andere Version laden</b> (deine Änderung bleibt als Entwurf erhalten) oder <b>Meine Version speichern</b>.</p>
+
+  <h2>Neue Reports</h2>
+  <p>„＋ Vorlesung“ → HTML-Datei wählen. Eingebettete Bilder werden automatisch als eigene Dateien abgelegt,
+    damit der Report schnell lädt, auch am Handy.</p>
+</div>
+</body>
+</html>

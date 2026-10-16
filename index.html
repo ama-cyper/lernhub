@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Lernreport-Hub</title>
+<link rel="stylesheet" href="assets/hub.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-in">
+    <a class="brand" href="./"><span class="brand-mark" aria-hidden="true">◆</span>Lernreport-Hub</a>
+    <div class="search">
+      <span class="search-ic" aria-hidden="true">⌕</span>
+      <input id="search" type="search" placeholder="Lernreport suchen …" autocomplete="off" spellcheck="false">
+      <span class="search-kbd" aria-hidden="true">/</span>
+      <button class="search-clear" id="searchClear" hidden title="Suche zurücksetzen">×</button>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn primary" id="addBtn"><span aria-hidden="true">＋</span> Vorlesung</button>
+      <button class="btn quiet" id="addFolderBtn">Neuer Ordner</button>
+      <a class="btn ghost" href="anleitung.html">Anleitung</a>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <section class="hero">
+    <div class="hero-text">
+      <div class="eyebrow">Sammlung · Lern-Reports</div>
+      <h1>Deine <em>Lernreports</em></h1>
+      <p class="lead">Nach Fachbereichen geordnet. Öffnen zum Lesen, „Bearbeiten“ zum Ändern —
+        direkt im Browser, auf jedem Gerät. Gespeichert wird privat in deinem GitHub-Repo.</p>
+      <p class="hero-hint"><span class="ic" aria-hidden="true">⠿</span>
+        Karten und Fachbereiche lassen sich an ihren Platz ziehen (am Handy: kurz gedrückt halten).</p>
+      <p class="hero-hint"><span class="ic" aria-hidden="true">⟳</span> <span id="sync">—</span> <span class="foot-sep" aria-hidden="true">·</span> <button class="linkbtn" id="logoutBtn" title="Zugangsschlüssel von diesem Gerät entfernen">Abmelden</button></p>
+    </div>
+    <div class="stats" id="stats">
+      <div class="stat"><b id="statReports">0</b><span>Lernreports</span></div>
+      <div class="stat"><b id="statFolders">0</b><span>Fachbereiche</span></div>
+      <div class="stat"><b id="statChapters">0</b><span>Kapitel</span></div>
+    </div>
+  </section>
+
+  <main>
+    <div id="board"></div>
+    <div class="empty" id="empty" hidden>
+      <span class="empty-ic" aria-hidden="true">📚</span>
+      <b>Noch keine Vorlesungen.</b>
+      <span>Klicke oben auf „＋ Vorlesung“ und wähle deine HTML-Datei — sie wird kopiert
+        und bleibt danach jederzeit bearbeitbar.</span>
+    </div>
+    <div class="empty" id="noHits" hidden>
+      <span class="empty-ic" aria-hidden="true">⌕</span>
+      <b>Keine Treffer.</b>
+      <span id="noHitsQ"></span>
+    </div>
+  </main>
+
+  <footer>
+    Lernreport-Hub <span class="foot-sep" aria-hidden="true">·</span> privat gespeichert in deinem GitHub-Repo
+    <span class="foot-sep" aria-hidden="true">·</span> <a href="anleitung.html">So funktioniert’s</a>
+  </footer>
+</div>
+
+<!-- Dialog: Vorlesung hinzufügen -->
+<dialog id="addDlg">
+  <div class="dlg-in">
+    <h3>Neue Vorlesung hinzufügen</h3>
+    <p>Wähle eine HTML-Datei (dein Lern-Report) oder ziehe sie in das Feld. Sie wird in dein privates
+      Repo hochgeladen und ist danach auf allen Geräten bearbeitbar — deine Originaldatei bleibt unangetastet.</p>
+    <div class="dropzone" id="dropzone">
+      <span class="dz-ic" aria-hidden="true">📄</span>HTML-Datei hierher ziehen<br>
+      <small>oder klicken zum Auswählen</small>
+    </div>
+    <input type="file" id="fileInput" accept=".html,.htm" hidden>
+    <label class="fieldlabel" for="addFolderSel">In welchen Fachbereich?</label>
+    <select class="field" id="addFolderSel"><option value="">Ohne Ordner</option></select>
+    <div class="dlg-row">
+      <button class="btn ghost" id="cancelAdd">Abbrechen</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- Dialog: Ordner anlegen / umbenennen -->
+<dialog id="folderDlg">
+  <form method="dialog" class="dlg-in" id="folderForm">
+    <h3 id="folderDlgTitle">Neuer Ordner</h3>
+    <p>Zum Beispiel „Dermatologie“ oder „Unfallchirurgie“.</p>
+    <label class="fieldlabel" for="folderName">Name des Fachbereichs</label>
+    <input class="field" id="folderName" maxlength="80" required autocomplete="off">
+    <label class="fieldlabel">Farbe</label>
+    <div class="swatches" id="folderColors"></div>
+    <div class="dlg-row">
+      <button class="btn ghost" value="cancel" formnovalidate>Abbrechen</button>
+      <button class="btn primary" value="ok" id="folderOk">Speichern</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Dialog: Lernreport in Ordner verschieben -->
+<dialog id="moveDlg">
+  <form method="dialog" class="dlg-in" id="moveForm">
+    <h3>In Ordner verschieben</h3>
+    <p id="moveWhat">—</p>
+    <label class="fieldlabel" for="moveSel">Zielordner</label>
+    <select class="field" id="moveSel"></select>
+    <div class="dlg-row">
+      <button class="btn ghost" value="cancel" formnovalidate>Abbrechen</button>
+      <button class="btn primary" value="ok">Verschieben</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast"></div>
+
+<!-- Anmeldung -->
+<section class="login" id="login" hidden>
+  <form class="login-card" id="loginForm" autocomplete="off">
+    <div class="eyebrow">Lernreport-Hub</div>
+    <h2>Anmelden auf diesem Gerät</h2>
+    <p>Deine Lernreports liegen in einem <b>privaten</b> GitHub-Repo. Zum Öffnen brauchst du einmal pro Gerät
+      deinen persönlichen Zugangsschlüssel.</p>
+    <label class="fieldlabel" for="tokenIn">Zugangsschlüssel (Token)</label>
+    <input class="field" id="tokenIn" type="password" placeholder="github_pat_…" spellcheck="false" autocapitalize="off" required>
+    <label class="check"><input type="checkbox" id="remember" checked> Auf diesem Gerät merken
+      <small>Auf fremden Rechnern (z.&nbsp;B. Bib-PC) abhaken — dann ist der Schlüssel beim Schließen des Browsers weg.</small></label>
+    <p class="login-err" id="loginErr" role="alert"></p>
+    <button class="btn primary" id="loginBtn">Anmelden</button>
+    <details class="login-help">
+      <summary>Neuen Schlüssel erstellen</summary>
+      <ol>
+        <li>Öffne <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com → Fine-grained token</a>.</li>
+        <li><b>Expiration:</b> z.&nbsp;B. 1 Jahr.</li>
+        <li><b>Repository access:</b> „Only select repositories“ → nur <code>lernhub-daten</code>.</li>
+        <li><b>Permissions → Repository → Contents:</b> „Read and write“. Sonst nichts.</li>
+        <li>Erstellen, Schlüssel kopieren, hier einfügen — und im Passwortmanager sichern.</li>
+      </ol>
+    </details>
+  </form>
+</section>
+
+<script src="assets/gh.js"></script>
+<script src="assets/hub.js"></script>
+</body>
+</html>

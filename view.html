@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Lädt …</title>
+<style>
+  :root{--bg:#f6f1e7;--ink:#2a2420;--mut:#7a6e62;--accent:#0e7c66}
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1b1916;--ink:#ede6da;--mut:#a59a8c}}
+  body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--ink);
+    font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px;box-sizing:border-box}
+  .box{max-width:420px;text-align:center}
+  .spin{width:28px;height:28px;border:3px solid color-mix(in srgb,var(--accent) 25%,transparent);border-top-color:var(--accent);
+    border-radius:50%;animation:s .8s linear infinite;margin:0 auto 14px}
+  @keyframes s{to{transform:rotate(1turn)}}
+  p{color:var(--mut);margin:.4em 0}
+  a,button{color:var(--accent);font:inherit;font-weight:700}
+  button{background:none;border:1px solid currentColor;border-radius:10px;padding:8px 14px;margin:6px 4px;cursor:pointer}
+</style>
+</head>
+<body>
+<div class="box" id="box"><div class="spin"></div><p>Lernreport wird geladen …</p></div>
+<script src="assets/gh.js"></script>
+<script>
+(async function () {
+  const box = document.getElementById('box');
+  const fail = (msg, extra) => { box.innerHTML = '<p><b>' + msg + '</b></p>' + (extra || '') + '<p><a href="./">← Zurück zum Hub</a></p>'; };
+  const q = new URLSearchParams(location.search);
+  const file = q.get('f');
+  if (!file || !/^[^/\\]+\.html?$/i.test(file)) return fail('Kein Lernreport angegeben.');
+  if (!LH.token()) { location.replace('./?next=' + encodeURIComponent(location.pathname + location.search)); return; }
+
+  let html, sha, fromDraft = false;
+  try {
+    const t = await LH.tree();
+    sha = t.get('lectures/' + file);
+    if (!sha) return fail('Diesen Lernreport gibt es nicht (mehr).');
+    const draft = LH.drafts.get(file);
+    if (q.get('draft') === '1' && draft && draft.html) { html = draft.html; fromDraft = true; }
+    else html = await LH.readText('lectures/' + file, sha);
+  } catch (e) {
+    if (e.status === 401) { LH.logout(); location.replace('./?next=' + encodeURIComponent(location.pathname + location.search)); return; }
+    const draft = LH.drafts.get(file);
+    return fail(e.message || 'Laden fehlgeschlagen.',
+      (e.status === 0 ? '<p>Ohne Internet lassen sich die Reports nicht laden.</p>' : '') +
+      '<button onclick="location.reload()">Nochmal versuchen</button>' +
+      (draft ? '<p>Ein ungespeicherter Entwurf liegt auf diesem Gerät und bleibt erhalten.</p>' : ''));
+  }
+
+  const A = LH.APP;
+  const inject =
+    '<script data-lr-ui>window.LH_DOC=' + JSON.stringify({ file, sha, fromDraft }).replace(/</g, '\\u003c') + ';<\/script>' +
+    '<link data-lr-ui rel="stylesheet" href="' + A + 'assets/editor.css">' +
+    '<script data-lr-ui src="' + A + 'assets/gh.js"><\/script>' +
+    '<script data-lr-ui src="' + A + 'assets/editor.js"><\/script>';
+  html = LH.prepareImages(html);
+  html = /<\/body>/i.test(html) ? html.replace(/<\/body>(?![\s\S]*<\/body>)/i, inject + '</body>') : html + inject;
+  if (!/<meta[^>]+name=["']robots/i.test(html)) html = html.replace(/<head([^>]*)>/i, '<head$1><meta data-lr-ui name="robots" content="noindex, nofollow">');
+
+  document.open();
+  document.write(html);
+  document.close();
+})();
+</script>
+</body>
+</html>

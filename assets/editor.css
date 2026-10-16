@@ -1,0 +1,305 @@
+/* Editor-UI für die Lern-Reports — Notion-artig.
+   Nutzt die Design-Variablen der Vorlesung (--accent etc.). */
+
+/* Obere Aktionsleiste */
+#lr-bar{position:fixed;top:0;left:0;right:0;z-index:9000;display:flex;gap:8px;align-items:center;
+  padding:8px 14px;background:var(--paper);border-bottom:1px solid var(--line);box-shadow:var(--sh);
+  font-family:var(--sans);}
+#lr-bar .lr-brand{font-weight:800;color:var(--accent);margin-right:auto;font-size:.92rem;letter-spacing:.02em;}
+#lr-bar a,#lr-bar button{font-family:var(--sans);font-size:.85rem;font-weight:700;border:1px solid var(--line);
+  background:var(--bg);color:var(--ink);border-radius:999px;padding:7px 15px;cursor:pointer;text-decoration:none;}
+#lr-bar button.on{background:linear-gradient(135deg,var(--accent),#0a5f4e);color:#fff;border-color:transparent;}
+#lr-bar button.save{background:var(--gold);color:#fff;border-color:transparent;}
+#lr-bar button:disabled{opacity:.5;cursor:default;}
+#lr-bar .lr-status{font-size:.78rem;color:var(--mut);min-width:70px;}
+body.lr-has-bar{--lr-bar-height:56px;padding-top:var(--lr-bar-height) !important;}
+/* Berichtseigene Steuerleisten (sticky/fixed am oberen Rand) rutschen unter
+   die Editor-Leiste und wären dort weder zu sehen noch zu bedienen. editor.js
+   erkennt sie und setzt hier die passenden Regeln — der Notnagel gilt, falls
+   das Skript noch nicht durchgelaufen ist. */
+body.lr-has-bar [data-lr-sticky]{top:var(--lr-bar-height) !important;}
+
+/* Bearbeiten-Modus: nur zarter Hinweisrahmen, kein farbiger Block.
+   Zielt auf den bearbeitbaren Bereich selbst — dadurch unabhängig davon,
+   ob der Report „.wrap“, „main“ oder etwas anderes benutzt. */
+body.lr-editing [contenteditable="true"]{outline:1px dashed rgba(14,124,102,.28);outline-offset:8px;border-radius:10px;}
+body.lr-editing [contenteditable]:focus{outline:none;}
+body.lr-editing [contenteditable="true"]:empty::before{content:"Tippe „/“ für Befehle …";color:var(--mut);}
+.chapter{display:flow-root;} /* enthält umflossene Bilder sauber */
+
+/* ---------- Slash-Menü (Notion-Befehle) ---------- */
+#lr-slash{position:fixed;z-index:9500;width:290px;max-height:340px;overflow:auto;background:var(--paper);
+  border:1px solid var(--line);border-radius:12px;box-shadow:var(--shh);padding:6px;font-family:var(--sans);display:none;}
+#lr-slash .lr-cat{font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);
+  padding:8px 10px 4px;font-weight:700;}
+#lr-slash .lr-item{display:flex;gap:10px;align-items:center;padding:8px 10px;border-radius:8px;cursor:pointer;}
+#lr-slash .lr-item .ic{width:30px;height:30px;flex:0 0 30px;display:grid;place-items:center;font-size:1.05rem;
+  background:var(--bg);border:1px solid var(--line);border-radius:7px;}
+#lr-slash .lr-item .tx b{display:block;font-size:.9rem;color:var(--ink);}
+#lr-slash .lr-item .tx small{color:var(--mut);font-size:.76rem;}
+#lr-slash .lr-item.sel,#lr-slash .lr-item:hover{background:rgba(14,124,102,.12);}
+#lr-slash .lr-none{padding:12px;color:var(--mut);font-size:.86rem;text-align:center;}
+
+/* ---------- Kleines Eingabefeld (Kommentar / Link) ---------- */
+#lr-ask{position:fixed;z-index:9700;width:320px;max-width:calc(100vw - 16px);display:none;
+  background:var(--paper,#fff);color:var(--ink,#1f2430);border:1px solid var(--line,#e3e3e3);
+  border-radius:12px;box-shadow:var(--shh,0 8px 30px rgba(0,0,0,.22));padding:12px 13px 11px;
+  font-family:var(--sans,-apple-system,"Segoe UI",Roboto,Arial,sans-serif);}
+#lr-ask .lr-ask-h{font-size:.82rem;font-weight:700;color:var(--ink,#1f2430);margin-bottom:7px;line-height:1.35;}
+#lr-ask .lr-ask-in{width:100%;box-sizing:border-box;resize:vertical;min-height:44px;
+  padding:8px 10px;border:1px solid var(--line,#e3e3e3);border-radius:8px;
+  background:var(--bg,#faf9f6);color:var(--ink,#1f2430);
+  font-family:var(--sans,-apple-system,"Segoe UI",Roboto,Arial,sans-serif);font-size:.92rem;line-height:1.45;}
+#lr-ask .lr-ask-in:focus{outline:none;border-color:var(--accent,#0e7c66);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--accent,#0e7c66) 20%,transparent);}
+#lr-ask .lr-ask-row{display:flex;justify-content:flex-end;gap:8px;margin-top:9px;}
+#lr-ask .lr-ask-row button{font-family:inherit;font-size:.85rem;font-weight:700;cursor:pointer;
+  border:1px solid var(--line,#e3e3e3);background:var(--paper,#fff);color:var(--ink,#1f2430);
+  border-radius:8px;padding:7px 14px;}
+#lr-ask .lr-ask-ok{background:var(--accent,#0e7c66);color:#fff;border-color:transparent;}
+#lr-ask .lr-ask-cancel:hover{background:var(--bg,#f2f2f2);}
+
+/* ---------- Kurzmeldung ---------- */
+#lr-toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(6px);z-index:9800;
+  background:var(--ink,#1f2430);color:var(--paper,#fff);padding:10px 18px;border-radius:999px;
+  font-family:var(--sans,-apple-system,"Segoe UI",Roboto,Arial,sans-serif);font-size:.86rem;font-weight:600;
+  box-shadow:var(--shh,0 8px 30px rgba(0,0,0,.3));opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;}
+#lr-toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+/* ---------- Auswahl-Popover (Inline-Format) ---------- */
+#lr-pop{position:fixed;z-index:9500;display:none;gap:3px;align-items:center;background:var(--ink);
+  padding:5px 6px;border-radius:10px;box-shadow:var(--shh);font-family:var(--sans);}
+#lr-pop button{font-family:var(--sans);font-size:.85rem;font-weight:700;border:none;background:transparent;
+  color:#fff;border-radius:6px;padding:5px 8px;cursor:pointer;line-height:1;min-width:26px;}
+#lr-pop button:hover{background:rgba(255,255,255,.18);}
+#lr-pop .lr-sep{width:1px;height:20px;background:rgba(255,255,255,.22);margin:0 3px;}
+#lr-pop .sw{width:20px;height:20px;padding:0;border-radius:5px;border:1px solid rgba(255,255,255,.35);}
+
+/* ---------- Bild-Werkzeuge ---------- */
+#lr-imgbar{position:fixed;z-index:9500;display:none;gap:3px;align-items:center;background:var(--ink);
+  padding:5px 6px;border-radius:10px;box-shadow:var(--shh);font-family:var(--sans);}
+#lr-imgbar button{border:none;background:transparent;color:#fff;border-radius:6px;padding:5px 8px;cursor:pointer;
+  font-size:.82rem;font-weight:700;line-height:1;}
+#lr-imgbar button:hover{background:rgba(255,255,255,.18);}
+#lr-imgbar button.act{background:var(--accent);}
+#lr-imgbar .lr-sep{width:1px;height:20px;background:rgba(255,255,255,.22);margin:0 3px;}
+#lr-resize{position:fixed;z-index:9490;width:16px;height:16px;background:var(--accent);border:2px solid #fff;
+  border-radius:50%;box-shadow:var(--sh);cursor:nwse-resize;display:none;}
+
+/* ---------- Bilder: Skalieren, Ausrichten, Umfließen ---------- */
+img.lr-img{max-width:100%;height:auto;border-radius:10px;box-shadow:var(--sh);vertical-align:top;}
+img.lr-img.a-center{display:block;float:none;margin:14px auto;}
+img.lr-img.a-left{float:left;margin:6px 20px 10px 0;}
+img.lr-img.a-right{float:right;margin:6px 0 10px 20px;}
+img.lr-img.a-full{display:block;float:none;width:100%;margin:14px 0;}
+body.lr-editing img.lr-img{cursor:pointer;}
+body.lr-editing img.lr-sel{outline:3px solid var(--accent);outline-offset:2px;}
+/* Alt-Format (figure) weiterhin unterstützt */
+.lr-figure{margin:16px 0;text-align:center;}
+.lr-figure img{max-width:100%;border-radius:12px;box-shadow:var(--sh);}
+.lr-figure figcaption{color:var(--mut);font-size:.84rem;margin-top:6px;font-style:italic;}
+
+/* ---------- Toggle: aufgebaut wie in Notion ----------------------------
+   Dreieck links in der Randspalte, dreht sich beim Öffnen um 90°; der Inhalt
+   ist unter dem Titel eingerückt; Auf-/Zuklappen läuft animiert.
+   Die Höhen-Animation steuert editor.js (Klasse .lr-animating).            */
+details.lr-animating{overflow:hidden !important;
+  transition:height .22s cubic-bezier(.25,.1,.25,1);}
+details.lr-animating > summary{pointer-events:none;}   /* kein Doppelklick mitten im Lauf */
+@media (prefers-reduced-motion:reduce){details.lr-animating{transition:none;}}
+
+details.toggle{border:none;background:none;box-shadow:none;padding:0;margin:10px 0;}
+details.toggle>summary{cursor:pointer;font-weight:600;color:var(--ink);list-style:none;
+  padding:3px 6px 3px 0;margin-left:-26px;display:flex;align-items:flex-start;gap:8px;
+  border-radius:6px;transition:background .12s;}
+details.toggle>summary:hover{background:rgba(125,125,125,.08);}
+details.toggle>summary::-webkit-details-marker{display:none;}
+details.toggle>summary::before{content:"▸";color:var(--mut);display:inline-flex;
+  align-items:center;justify-content:center;width:18px;min-width:18px;height:1.5em;
+  font-size:.92em;border-radius:4px;transition:transform .2s cubic-bezier(.25,.1,.25,1),background .12s;}
+details.toggle>summary:hover::before{background:rgba(125,125,125,.14);color:var(--ink);}
+details.toggle[open]>summary::before{transform:rotate(90deg);}
+/* Wie in Notion: das Dreieck hängt links AUSSERHALB der Textspalte, der Titel
+   fluchtet mit dem normalen Fließtext, der Inhalt ist darunter eingerückt. */
+details.toggle .toggle-body{padding:2px 0 4px 26px;}
+details.toggle .toggle-body>p:first-child{margin-top:4px;}
+details.toggle .toggle-body:empty::before{content:"Leer";color:var(--mut);font-style:italic;opacity:.7;}
+@media (max-width:600px){   /* auf schmalen Displays kein Überhang */
+  details.toggle>summary{margin-left:0;}
+}
+
+/* Auch die berichtseigenen Klapp-Blöcke (Lösungen, Altklausur-Antworten)
+   bekommen die weiche Animation — ihr Aussehen bleibt unangetastet. */
+details > summary{cursor:pointer;}
+body.lr-editing details > summary{cursor:text;}
+body.lr-editing details > summary::before,
+body.lr-editing details > summary::marker{cursor:pointer;}
+
+/* Noch unbeschrifteter Titel: Hinweis, wie es weitergeht (nur im Bearbeiten-
+   Modus, nur solange nichts darin steht — der Platzhalter ist ein <br>). */
+body.lr-editing details > summary:empty::after,
+body.lr-editing details > summary:has(> br:only-child)::after{
+  content:"Titel … · Enter = nächster Toggle · Umschalt+Enter = Inhalt";
+  color:var(--mut);font-weight:400;font-style:italic;opacity:.6;
+  pointer-events:none;font-size:.92em;}
+
+/* Zitat & Trennlinie (per Slash einfügbar) */
+blockquote.lr-quote{border-left:3px solid var(--line);margin:14px 0;padding:2px 0 2px 16px;color:var(--mut);font-style:italic;}
+hr.lr-hr{border:none;border-top:1px solid var(--line);margin:22px 0;}
+
+/* ---------- Verschachtelte Listen (Tab / Notion-artig) --------------------
+   Jede Ebene bekommt ein eigenes Zeichen: •  ○  ▪  — und einen Einzug.
+   Gilt in Lese- UND Bearbeiten-Ansicht. Die Marker der obersten Ebene (die
+   viele Reports selbst gestalten) bleiben unangetastet; nur ab der 2. Ebene
+   setzen wir eigene, damit Unterpunkte klar erkennbar sind.                 */
+li > ul, li > ol{margin:4px 0 4px 0;}
+li li{list-style-position:outside;}
+/* Marker je Verschachtelungstiefe — die oberste Ebene behält der Report.
+   1. Unterebene ○, 2. ▪, danach wieder •  (überschreibt list-style:none). */
+li ul{list-style:circle;padding-left:24px;}
+li ul ul{list-style:square;}
+li ul ul ul{list-style:disc;}
+li ol{list-style:lower-alpha;padding-left:24px;}
+li ol ol{list-style:lower-roman;}
+/* falls ein Report eigene ::before-Punkte malt: auf Unterebenen abschalten,
+   damit nicht zwei Marker übereinanderliegen */
+li li::before{content:none !important;display:none !important;}
+li li{padding-left:0 !important;position:static !important;}
+
+/* ==========================================================================
+   Feinschliff: Text-Layout, visuelle Hierarchie & Spacing
+   Nur für die Bildschirm-Lesansicht (@media screen) — der PDF-/Druck-Export
+   bleibt bewusst 1:1 auf den Original-Stilen der Vorlesung.
+   ========================================================================== */
+@media screen{
+  /* Ruhigerer Lesefluss: etwas mehr Luft im Kapitel */
+  .wrap .chapter{padding:28px 30px 22px;}
+
+  /* Einleitungsabsatz jedes Kapitels als sanfter „Lead“ absetzen → weniger monoton */
+  .wrap .chapter > p:first-of-type{font-size:1.055rem;line-height:1.72;color:var(--ink);}
+  .wrap .chapter > p:first-of-type::first-letter{font-weight:600;}
+
+  /* Zwischenüberschriften bekommen einen kleinen Akzent-Marker (Hierarchie-Anker) */
+  .wrap .chapter h3{position:relative;padding-left:16px;}
+  .wrap .chapter h3::before{content:"";position:absolute;left:0;top:calc(6px + .22em);
+    width:5px;height:.95em;border-radius:3px;background:linear-gradient(180deg,var(--accent),#0a5f4e);}
+
+  /* Aufzählungen: eigene, theme-farbene Punkte statt Standard-Bullets */
+  .wrap .chapter ul{list-style:none;padding-left:20px;}
+  .wrap .chapter ul > li{position:relative;padding-left:6px;}
+  .wrap .chapter ul > li::before{content:"";position:absolute;left:-14px;top:.72em;
+    width:6px;height:6px;border-radius:50%;background:var(--accent);opacity:.75;}
+  /* In Hinweis-Boxen und Selbsttests die Standard-Optik nicht überschreiben */
+  .wrap .cx ul{list-style:none;}
+  .wrap .cx ul > li::before{opacity:.6;}
+
+  /* Mehr Rhythmus zwischen aufeinanderfolgenden Hinweis-Boxen */
+  .wrap .cx + .cx{margin-top:20px;}
+}
+
+/* ==========================================================================
+   Fachbegriff-Tooltips: Hover über markierte Begriffe zeigt Erklärung
+   .lr-term ist echter Inhalt (wird gespeichert); #lr-tip ist reine UI.
+   ========================================================================== */
+.lr-term{border-bottom:2px dotted var(--accent);cursor:help;font-weight:600;
+  color:inherit;text-decoration:none;transition:background .15s;border-radius:3px;}
+.lr-term:hover{background:rgba(14,124,102,.10);}
+body.lr-editing .lr-term{background:rgba(14,124,102,.06);}
+
+#lr-tip{position:fixed;z-index:9600;max-width:300px;display:none;
+  background:var(--paper);color:var(--ink);border:1px solid var(--line);
+  border-left:4px solid var(--accent);border-radius:12px;padding:11px 14px;
+  box-shadow:var(--shh);font-family:var(--sans);font-size:.9rem;line-height:1.5;
+  font-weight:400;font-style:normal;pointer-events:none;
+  opacity:0;transform:translateY(4px);transition:opacity .14s,transform .14s;}
+#lr-tip.show{opacity:1;transform:translateY(0);}
+#lr-tip .lr-tip-h{display:flex;align-items:center;gap:6px;font-size:.68rem;font-weight:800;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-bottom:4px;}
+
+/* ==========================================================================
+   Bild-Lightbox: Klick auf ein Bild öffnet Vollansicht; Lupe-Hinweis beim Hover
+   Alle Elemente hier sind reine UI (data-lr-ui) → landen nicht in der Datei.
+   ========================================================================== */
+#lr-zoomhint{position:fixed;z-index:9400;display:none;align-items:center;gap:6px;
+  background:rgba(20,22,27,.82);color:#fff;border-radius:999px;padding:6px 12px 6px 10px;
+  font-family:var(--sans);font-size:.78rem;font-weight:700;pointer-events:none;
+  box-shadow:var(--shh);backdrop-filter:saturate(1.2) blur(2px);}
+#lr-zoomhint .ic{font-size:.95rem;line-height:1;}
+
+#lr-lightbox{position:fixed;inset:0;z-index:9800;display:none;
+  align-items:center;justify-content:center;padding:32px;
+  background:rgba(15,17,22,.88);backdrop-filter:blur(3px);
+  opacity:0;transition:opacity .2s;}
+#lr-lightbox.show{opacity:1;}
+#lr-lightbox img{max-width:100%;max-height:100%;border-radius:14px;
+  box-shadow:0 20px 70px rgba(0,0,0,.6);transform:scale(.96);transition:transform .2s;
+  object-fit:contain;}
+#lr-lightbox.show img{transform:scale(1);}
+#lr-lightbox .lr-lb-close{position:fixed;top:20px;right:24px;width:44px;height:44px;
+  display:grid;place-items:center;border:none;border-radius:50%;cursor:pointer;
+  background:rgba(255,255,255,.14);color:#fff;font-size:1.5rem;line-height:1;font-weight:700;
+  font-family:var(--sans);transition:background .15s,transform .1s;}
+#lr-lightbox .lr-lb-close:hover{background:rgba(255,255,255,.28);transform:scale(1.06);}
+#lr-lightbox .lr-lb-cap{position:fixed;bottom:22px;left:0;right:0;text-align:center;
+  color:rgba(255,255,255,.85);font-family:var(--sans);font-size:.85rem;padding:0 24px;}
+body.lr-lightbox-open{overflow:hidden;}
+
+/* ---------- PDF-/Druck-Ausgabe: Layout 1:1, nichts verschiebt sich ---------- */
+@media print{
+  /* Editor-Oberfläche komplett ausblenden */
+  #lr-bar,#lr-slash,#lr-pop,#lr-imgbar,#lr-resize,#lr-tip,#lr-zoomhint,#lr-lightbox,[data-lr-ui]{display:none !important;}
+  body.lr-has-bar{padding-top:0 !important;}
+  /* Ohne Editor-Leiste braucht auch keine Steuerleiste einen Abstand. */
+  body.lr-has-bar [data-lr-sticky]{top:auto !important;}
+  body.lr-editing .wrap{outline:none !important;}
+
+  /* Fachbegriffe im Druck dezent, aber lesbar (Tooltip-Inhalt entfällt naturgemäß) */
+  .lr-term{border-bottom:1px dotted var(--mut) !important;background:none !important;}
+
+  /* WICHTIG: Hintergrundfarben mitdrucken — sonst verschwinden Hinweis-Boxen,
+     Textmarker-Markierungen und Tabellen-Kopfzeilen im PDF. */
+  html,body,*{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;}
+  body{background:#fff !important;}
+
+  /* Gleichmäßige Seitenränder */
+  @page{margin:14mm;}
+
+  /* Keine großen Leerräume am Seitenende: große Blöcke dürfen über Seiten
+     fließen, statt als Ganzes auf die nächste Seite zu springen. */
+  .chapter{break-inside:auto !important;box-shadow:none !important;}
+  .cx,.cx-b,.tw,table,tbody,details.toggle,.toggle-body,blockquote,.sol-list{break-inside:auto !important;}
+
+  /* Nur kleine, atomare Einheiten zusammenhalten (die splitten nie schön). */
+  tr,.sol-list li,figure,.lr-figure,img,img.lr-img{break-inside:avoid;}
+
+  /* Überschriften und Box-Titel bleiben bei ihrem Folgeinhalt (nicht allein am Seitenende). */
+  h1,h2,h3,summary,.cx-h{break-after:avoid;}
+
+  /* Tabellen-Kopfzeile auf jeder Folgeseite wiederholen. */
+  thead{display:table-header-group;}
+
+  /* Keine einzelnen Rest-Zeilen am Seitenumbruch. */
+  p,li{orphans:2;widows:2;}
+
+  /* Tabellen an die Seitenbreite anpassen — kein horizontales Abschneiden */
+  .tw{overflow:visible !important;}
+  table{min-width:0 !important;width:100% !important;}
+
+  /* Bilder bleiben immer innerhalb der Seite */
+  img,img.lr-img{max-width:100% !important;}
+}
+
+/* ---- Hinweisleiste (Konflikt / Entwurf) — GitHub-Version ---- */
+#lr-note{position:fixed;left:12px;right:12px;bottom:max(12px,env(safe-area-inset-bottom));z-index:9800;display:none;
+  flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;max-width:760px;margin:0 auto;
+  padding:12px 14px;border-radius:14px;background:#2a2420;color:#fff;font:600 .9rem/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;
+  box-shadow:0 10px 30px rgba(0,0,0,.25);}
+#lr-note .lr-note-t{flex:1 1 260px;}
+#lr-note .lr-note-b{display:flex;gap:8px;flex-wrap:wrap;}
+#lr-note button{font:inherit;border-radius:10px;padding:7px 12px;border:1px solid rgba(255,255,255,.35);background:transparent;color:#fff;cursor:pointer;}
+#lr-note button.pri{background:#d4a017;border-color:transparent;color:#1d1a16;}
+@media (max-width:600px){
+  #lr-bar{flex-wrap:wrap;row-gap:6px;padding-top:max(6px,env(safe-area-inset-top));}
+  #lr-bar .lr-brand{display:none;}
+  #lr-bar .lr-status{flex:1 1 100%;order:9;min-width:0;}
+}
