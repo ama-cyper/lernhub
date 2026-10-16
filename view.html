@@ -21,7 +21,7 @@
 </head>
 <body>
 <div class="box" id="box"><div class="spin"></div><p>Lernreport wird geladen …</p></div>
-<script src="assets/gh.js"></script>
+<script src="assets/gh.js?v=3"></script>
 <script>
 (async function () {
   const box = document.getElementById('box');
@@ -57,9 +57,9 @@
   const A = LH.APP;
   const inject =
     '<script data-lr-ui>window.LH_DOC=' + JSON.stringify({ file, sha, fromDraft }).replace(/</g, '\\u003c') + ';<\/script>' +
-    '<link data-lr-ui rel="stylesheet" href="' + A + 'assets/editor.css">' +
-    '<script data-lr-ui src="' + A + 'assets/gh.js"><\/script>' +
-    '<script data-lr-ui src="' + A + 'assets/editor.js"><\/script>';
+    '<link data-lr-ui rel="stylesheet" href="' + A + 'assets/editor.css?v=3">' +
+    '<script data-lr-ui src="' + A + 'assets/gh.js?v=3"><\/script>' +
+    '<script data-lr-ui src="' + A + 'assets/editor.js?v=3"><\/script>';
   html = LH.prepareImages(html);
   html = /<\/body>/i.test(html) ? html.replace(/<\/body>(?![\s\S]*<\/body>)/i, inject + '</body>') : html + inject;
   if (!/<meta[^>]+name=["']robots/i.test(html)) html = html.replace(/<head([^>]*)>/i, '<head$1><meta data-lr-ui name="robots" content="noindex, nofollow">');
