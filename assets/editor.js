@@ -271,21 +271,42 @@
   /* ---------- Auswahl-Popover (Inline-Format + Textmarker) ---------- */
   const HL = { Gelb: '#fff3a3', Grün: '#c6f0d4', Blau: '#cfe3ff', Rosa: '#ffd6e7', Orange: '#ffe0b3' };
   const TC = { Grün: '#0e7c66', Blau: '#2563eb', Lila: '#7c3aed', Rot: '#c0392b', Gold: '#b8860b' };
-  const pop = mark(el('<div id="lr-pop"></div>'));
+  const ico = d => `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+  const I = {
+    bold: ico('<path d="M7 5h6a3.5 3.5 0 0 1 0 7H7z"/><path d="M7 12h7a3.5 3.5 0 0 1 0 7H7z"/>'),
+    italic: ico('<path d="M14 5h-4M14 19h-4M14.5 5 9.5 19"/>'),
+    underline: ico('<path d="M7 4v7a5 5 0 0 0 10 0V4"/><path d="M5 20h14"/>'),
+    strike: ico('<path d="M5 12h14"/><path d="M16 6.5A4 3 0 0 0 12 5c-2.5 0-4 1.3-4 3 0 1.2.8 2.2 2.5 2.8"/><path d="M8 17.5A4.5 3 0 0 0 12 19c2.6 0 4.2-1.3 4.2-3 0-.6-.2-1.2-.5-1.6"/>'),
+    link: ico('<path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/>'),
+    term: ico('<path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-4 3v-3H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M8.5 9.5h7M8.5 12.5h4"/>'),
+    chev: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>'
+  };
+  const pop = mark(el('<div id="lr-pop" role="toolbar" aria-label="Textformat"></div>'));
   pop.innerHTML =
-    '<button data-c="bold" title="Fett"><b>F</b></button>' +
-    '<button data-c="italic" title="Kursiv"><i>K</i></button>' +
-    '<button data-c="underline" title="Unterstrichen"><u>U</u></button>' +
-    '<button data-c="strikeThrough" title="Durchgestrichen"><s>S</s></button>' +
-    '<span class="lr-sep"></span><span style="color:#fff;font-size:.72rem;font-weight:700;padding:0 2px" title="Textmarker">▧</span>' +
-    Object.entries(HL).map(([n, c]) => `<button class="sw" data-hl="${c}" title="Marker ${n}" style="background:${c}"></button>`).join('') +
-    `<button data-hl="transparent" title="Marker entfernen" style="min-width:22px">⌫</button>` +
-    '<span class="lr-sep"></span><span style="color:#fff;font-size:.72rem;font-weight:700;padding:0 2px" title="Schriftfarbe">A</span>' +
-    Object.entries(TC).map(([n, c]) => `<button class="sw" data-fc="${c}" title="Farbe ${n}" style="background:${c}"></button>`).join('') +
-    `<button data-fc="inherit" title="Farbe zurücksetzen" style="min-width:22px">A</button>` +
-    '<span class="lr-sep"></span><button data-act="link" title="Link">🔗</button>' +
-    '<button data-act="term" title="Fachbegriff erklären (Tooltip)">💬</button>';
+    '<div class="lr-pop-row">' +
+      `<button data-c="bold" title="Fett (Strg+B)" aria-label="Fett">${I.bold}</button>` +
+      `<button data-c="italic" title="Kursiv (Strg+I)" aria-label="Kursiv">${I.italic}</button>` +
+      `<button data-c="underline" title="Unterstrichen (Strg+U)" aria-label="Unterstrichen">${I.underline}</button>` +
+      `<button data-c="strikeThrough" title="Durchgestrichen" aria-label="Durchgestrichen">${I.strike}</button>` +
+      '<span class="lr-sep"></span>' +
+      `<button data-act="color" class="lr-colorbtn" title="Farbe &amp; Textmarker" aria-label="Farbe und Textmarker"><span class="lr-a">A</span>${I.chev}</button>` +
+      '<span class="lr-sep"></span>' +
+      `<button data-act="link" title="Link einfügen" aria-label="Link">${I.link}</button>` +
+      `<button data-act="term" class="lr-wide" title="Fachbegriff erklären (Tooltip)" aria-label="Erklärung">${I.term}<span>Erklärung</span></button>` +
+    '</div>' +
+    '<div class="lr-colors">' +
+      '<div class="lr-col-h">Textmarker</div><div class="lr-col-g">' +
+        '<button data-hl="transparent" class="lr-chip lr-none" title="Kein Marker"><span>A</span></button>' +
+        Object.entries(HL).map(([n, c]) => `<button class="lr-chip" data-hl="${c}" title="${n}" style="background:${c}"><span>A</span></button>`).join('') +
+      '</div>' +
+      '<div class="lr-col-h">Schriftfarbe</div><div class="lr-col-g">' +
+        '<button data-fc="inherit" class="lr-chip lr-plain" title="Standard"><span>A</span></button>' +
+        Object.entries(TC).map(([n, c]) => `<button class="lr-chip lr-plain" data-fc="${c}" title="${n}"><span style="color:${c}">A</span></button>`).join('') +
+      '</div>' +
+    '</div>';
   document.body.appendChild(pop);
+  const colorBtn = pop.querySelector('.lr-colorbtn');
+  function setColorsOpen(open) { pop.classList.toggle('lr-colors-open', open); colorBtn.classList.toggle('on', open); }
 
   /* ---------- Bild-Werkzeugleiste + Anfasser ---------- */
   const imgbar = mark(el('<div id="lr-imgbar">' +
@@ -528,14 +549,24 @@
     if (!editing) return;
     const sel = window.getSelection();
     if (slashMenu.style.display === 'block') { pop.style.display = 'none'; return; }
-    if (!sel.rangeCount || sel.isCollapsed || !inRegion(sel.anchorNode)) { pop.style.display = 'none'; return; }
+    const hide = () => { pop.style.display = 'none'; setColorsOpen(false); };
+    if (!sel.rangeCount || sel.isCollapsed || !inRegion(sel.anchorNode)) { hide(); return; }
     const rect = sel.getRangeAt(0).getBoundingClientRect();
-    if (!rect.width && !rect.height) { pop.style.display = 'none'; return; }
-    pop.style.display = 'flex';
-    let left = rect.left + rect.width / 2 - pop.offsetWidth / 2;
-    left = Math.max(8, Math.min(left, innerWidth - pop.offsetWidth - 8));
-    let top = rect.top - pop.offsetHeight - 8;
-    if (top < 60) top = rect.bottom + 8;
+    if (!rect.width && !rect.height) { hide(); return; }
+    pop.style.display = 'block';
+    // Aktive Formate hervorheben
+    pop.querySelectorAll('button[data-c]').forEach(b => {
+      let on = false; try { on = document.queryCommandState(b.dataset.c); } catch (_) {}
+      b.classList.toggle('on', on);
+    });
+    const row = pop.firstElementChild;
+    const pw = row.offsetWidth, ph = row.offsetHeight;
+    const topBar = (document.getElementById('lr-bar') || {}).offsetHeight || 0;
+    let left = rect.left + rect.width / 2 - pw / 2;
+    left = Math.max(8, Math.min(left, innerWidth - pw - 8));
+    let top = rect.top - ph - 10, above = true;
+    if (top < topBar + 8) { top = rect.bottom + 10; above = false; }
+    pop.classList.toggle('lr-above', above);
     pop.style.left = left + 'px';
     pop.style.top = top + 'px';
   }
@@ -543,10 +574,11 @@
   pop.addEventListener('mousedown', e => { if (e.target.closest('button')) e.preventDefault(); });
   pop.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.act === 'color') { setColorsOpen(!pop.classList.contains('lr-colors-open')); return; }
     focusRegion();
     if (b.dataset.c) document.execCommand(b.dataset.c, false, null);
-    else if (b.dataset.hl) { document.execCommand('styleWithCSS', false, true); document.execCommand('hiliteColor', false, b.dataset.hl); }
-    else if (b.dataset.fc) { document.execCommand('styleWithCSS', false, true); document.execCommand('foreColor', false, b.dataset.fc); }
+    else if (b.dataset.hl) { document.execCommand('styleWithCSS', false, true); document.execCommand('hiliteColor', false, b.dataset.hl); setColorsOpen(false); }
+    else if (b.dataset.fc) { document.execCommand('styleWithCSS', false, true); document.execCommand('foreColor', false, b.dataset.fc); setColorsOpen(false); }
     else if (b.dataset.act === 'link') { makeLink(); return; }
     else if (b.dataset.act === 'term') { makeTerm(); return; }
     setDirty(true);
@@ -706,7 +738,7 @@
       : (document.caretPositionFromPoint && (() => { const c = document.caretPositionFromPoint(e.clientX, e.clientY); const r = document.createRange(); r.setStart(c.offsetNode, c.offset); return r; })());
     if (pos) { pos.insertNode(selImg); setDirty(true); positionImgUI(); }
   });
-  window.addEventListener('scroll', () => { if (selImg) positionImgUI(); if (pop.style.display === 'flex') updatePopover(); }, true);
+  window.addEventListener('scroll', () => { if (selImg) positionImgUI(); if (pop.style.display === 'block') updatePopover(); }, true);
   window.addEventListener('resize', () => { if (selImg) positionImgUI(); });
 
   document.addEventListener('keydown', e => {
@@ -834,7 +866,7 @@
   function showTip(term) {
     const txt = term.getAttribute('data-tip'); if (!txt) return;
     tipTarget = term;
-    tipBox.innerHTML = '<div class="lr-tip-h">💬 Erklärung</div>';
+    tipBox.innerHTML = '<div class="lr-tip-h">' + I.term + 'Erklärung</div>';
     tipBox.appendChild(document.createTextNode(txt));
     tipBox.style.display = 'block';
     const r = term.getBoundingClientRect();

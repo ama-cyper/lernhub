@@ -66,14 +66,51 @@ body.lr-editing [contenteditable="true"]:empty::before{content:"Tippe „/“ f�
   box-shadow:var(--shh,0 8px 30px rgba(0,0,0,.3));opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;}
 #lr-toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 
+/* ---------- Eigene Farbwerte der Editor-Oberfläche -------------------------
+   Nicht jeder Report definiert --paper/--line/--accent/--shh. Fehlen sie,
+   werden Popups durchsichtig. Darum bekommt jedes UI-Element feste Werte,
+   die nur die Akzentfarbe vom Report übernehmen (falls vorhanden). */
+#lr-pop,#lr-tip,#lr-slash,#lr-imgbar,#lr-ask{
+  --lr-surface:#ffffff;--lr-ink:#1f2328;--lr-mut:#6b7280;--lr-line:rgba(15,23,42,.10);
+  --lr-hover:rgba(15,23,42,.06);--lr-acc:var(--accent,#0e7c66);
+  --lr-font:var(--sans,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif);
+  --lr-shadow:0 0 0 1px rgba(15,23,42,.06),0 2px 4px rgba(15,23,42,.06),0 12px 32px rgba(15,23,42,.16);}
+#lr-slash{background:var(--lr-surface);color:var(--lr-ink);border-color:var(--lr-line);box-shadow:var(--lr-shadow);font-family:var(--lr-font);}
+#lr-imgbar{background:#1f2328 !important;box-shadow:var(--lr-shadow) !important;font-family:var(--lr-font) !important;}
+
 /* ---------- Auswahl-Popover (Inline-Format) ---------- */
-#lr-pop{position:fixed;z-index:9500;display:none;gap:3px;align-items:center;background:var(--ink);
-  padding:5px 6px;border-radius:10px;box-shadow:var(--shh);font-family:var(--sans);}
-#lr-pop button{font-family:var(--sans);font-size:.85rem;font-weight:700;border:none;background:transparent;
-  color:#fff;border-radius:6px;padding:5px 8px;cursor:pointer;line-height:1;min-width:26px;}
-#lr-pop button:hover{background:rgba(255,255,255,.18);}
-#lr-pop .lr-sep{width:1px;height:20px;background:rgba(255,255,255,.22);margin:0 3px;}
-#lr-pop .sw{width:20px;height:20px;padding:0;border-radius:5px;border:1px solid rgba(255,255,255,.35);}
+#lr-pop{position:fixed;z-index:9500;display:none;font-family:var(--lr-font);color:var(--lr-ink);
+  animation:lr-pop-in .12s ease-out;}
+@keyframes lr-pop-in{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+#lr-pop .lr-pop-row{display:flex;align-items:center;gap:2px;padding:4px;background:var(--lr-surface);
+  border-radius:10px;box-shadow:var(--lr-shadow);white-space:nowrap;}
+#lr-pop button{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:5px;
+  height:32px;min-width:32px;padding:0 7px;border-radius:7px;cursor:pointer;color:var(--lr-ink);
+  font:600 13px/1 var(--lr-font);transition:background .12s,color .12s;}
+#lr-pop button:hover{background:var(--lr-hover);}
+#lr-pop button.on{background:color-mix(in srgb,var(--lr-acc) 14%,transparent);color:var(--lr-acc);}
+#lr-pop button:focus-visible{outline:2px solid var(--lr-acc);outline-offset:1px;}
+#lr-pop .lr-sep{width:1px;height:20px;background:var(--lr-line);margin:0 4px;flex:none;}
+#lr-pop .lr-colorbtn{gap:3px;padding:0 6px 0 8px;}
+#lr-pop .lr-colorbtn svg{opacity:.55;}
+#lr-pop .lr-a{font:700 15px/1 var(--lr-font);padding-bottom:1px;
+  border-bottom:3px solid #f5c542;}
+#lr-pop .lr-wide{padding:0 10px 0 8px;}
+#lr-pop .lr-wide span{font-size:13px;}
+
+/* Farbmenü (klappt unter bzw. über der Leiste auf) */
+#lr-pop .lr-colors{display:none;position:absolute;left:0;top:calc(100% + 6px);width:236px;padding:10px 10px 6px;
+  background:var(--lr-surface);border-radius:10px;box-shadow:var(--lr-shadow);}
+#lr-pop.lr-above .lr-colors{top:auto;bottom:calc(100% + 6px);}
+#lr-pop.lr-colors-open .lr-colors{display:block;animation:lr-pop-in .12s ease-out;}
+#lr-pop .lr-col-h{font:700 11px/1 var(--lr-font);letter-spacing:.06em;text-transform:uppercase;color:var(--lr-mut);margin:2px 2px 8px;}
+#lr-pop .lr-col-g{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:12px;}
+#lr-pop .lr-chip{height:30px;min-width:0;padding:0;border-radius:7px;box-shadow:inset 0 0 0 1px var(--lr-line);
+  font:700 14px/1 var(--lr-font);color:var(--lr-ink);transition:transform .1s,box-shadow .12s;}
+#lr-pop .lr-chip:hover{transform:scale(1.08);box-shadow:inset 0 0 0 1px var(--lr-line),0 2px 6px rgba(15,23,42,.15);}
+#lr-pop .lr-chip.lr-plain{background:var(--lr-surface);}
+#lr-pop .lr-chip.lr-none{background:var(--lr-surface) linear-gradient(135deg,transparent 46%,#e5484d 46%,#e5484d 54%,transparent 54%);}
+@media (max-width:600px){#lr-pop .lr-wide span{display:none;}}
 
 /* ---------- Bild-Werkzeuge ---------- */
 #lr-imgbar{position:fixed;z-index:9500;display:none;gap:3px;align-items:center;background:var(--ink);
@@ -201,20 +238,21 @@ li li{padding-left:0 !important;position:static !important;}
    Fachbegriff-Tooltips: Hover über markierte Begriffe zeigt Erklärung
    .lr-term ist echter Inhalt (wird gespeichert); #lr-tip ist reine UI.
    ========================================================================== */
-.lr-term{border-bottom:2px dotted var(--accent);cursor:help;font-weight:600;
+.lr-term{border-bottom:2px dotted var(--accent,#0e7c66);cursor:help;font-weight:600;
   color:inherit;text-decoration:none;transition:background .15s;border-radius:3px;}
 .lr-term:hover{background:rgba(14,124,102,.10);}
 body.lr-editing .lr-term{background:rgba(14,124,102,.06);}
 
-#lr-tip{position:fixed;z-index:9600;max-width:300px;display:none;
-  background:var(--paper);color:var(--ink);border:1px solid var(--line);
-  border-left:4px solid var(--accent);border-radius:12px;padding:11px 14px;
-  box-shadow:var(--shh);font-family:var(--sans);font-size:.9rem;line-height:1.5;
-  font-weight:400;font-style:normal;pointer-events:none;
+#lr-tip{position:fixed;z-index:9600;width:max-content;max-width:min(320px,calc(100vw - 16px));display:none;
+  box-sizing:border-box;background:var(--lr-surface);color:var(--lr-ink);
+  border:none;border-left:4px solid var(--lr-acc);border-radius:10px;padding:10px 14px 11px;
+  box-shadow:var(--lr-shadow);font:400 14px/1.5 var(--lr-font);font-style:normal;
+  text-align:left;text-transform:none;letter-spacing:normal;white-space:normal;pointer-events:none;
   opacity:0;transform:translateY(4px);transition:opacity .14s,transform .14s;}
 #lr-tip.show{opacity:1;transform:translateY(0);}
-#lr-tip .lr-tip-h{display:flex;align-items:center;gap:6px;font-size:.68rem;font-weight:800;
-  letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-bottom:4px;}
+#lr-tip .lr-tip-h svg{width:13px;height:13px;}
+#lr-tip .lr-tip-h{display:flex;align-items:center;gap:6px;font:800 11px/1 var(--lr-font);
+  letter-spacing:.08em;text-transform:uppercase;color:var(--lr-acc);margin-bottom:6px;}
 
 /* ==========================================================================
    Bild-Lightbox: Klick auf ein Bild öffnet Vollansicht; Lupe-Hinweis beim Hover
