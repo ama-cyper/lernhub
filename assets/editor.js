@@ -87,6 +87,8 @@
     '<div id="lr-bar">' +
       '<span class="lr-brand">✏️ Lernreport-Editor</span>' +
       '<span class="lr-status" id="lr-status">Gespeichert</span>' +
+      (document.querySelector('article.card details.sol') && window.LH_DOC && LH_DOC.file
+        ? '<a id="lr-exam" href="' + LH.APP + 'exam.html?f=' + encodeURIComponent(LH_DOC.file) + '" title="Altfragen interaktiv abfragen">🎯 Prüfung</a>' : '') +
       '<button id="lr-pdf" title="Als PDF speichern/drucken">PDF</button>' +
       '<a href="' + LH.APP + '">← Hub</a>' +
       '<button id="lr-toggle">Bearbeiten</button>' +

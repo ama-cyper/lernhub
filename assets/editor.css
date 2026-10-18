@@ -3,12 +3,13 @@
 
 /* Obere Aktionsleiste */
 #lr-bar{position:fixed;top:0;left:0;right:0;z-index:9000;display:flex;gap:8px;align-items:center;
-  padding:8px 14px;background:var(--paper);border-bottom:1px solid var(--line);box-shadow:var(--sh);
-  font-family:var(--sans);}
+  padding:8px 14px;background:var(--paper,#fffefb);color:var(--ink,#1f2328);border-bottom:1px solid var(--line,rgba(15,23,42,.1));
+  box-shadow:var(--sh,0 1px 6px rgba(15,23,42,.08));font-family:var(--sans,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif);}
 #lr-bar .lr-brand{font-weight:800;color:var(--accent);margin-right:auto;font-size:.92rem;letter-spacing:.02em;}
 #lr-bar a,#lr-bar button{font-family:var(--sans);font-size:.85rem;font-weight:700;border:1px solid var(--line);
   background:var(--bg);color:var(--ink);border-radius:999px;padding:7px 15px;cursor:pointer;text-decoration:none;}
 #lr-bar button.on{background:linear-gradient(135deg,var(--accent),#0a5f4e);color:#fff;border-color:transparent;}
+#lr-bar a#lr-exam{background:var(--accent,#0e7c66);color:#fff;border-color:transparent;}
 #lr-bar button.save{background:var(--gold);color:#fff;border-color:transparent;}
 #lr-bar button:disabled{opacity:.5;cursor:default;}
 #lr-bar .lr-status{font-size:.78rem;color:var(--mut);min-width:70px;}

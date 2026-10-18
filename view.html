@@ -57,9 +57,9 @@
   const A = LH.APP;
   const inject =
     '<script data-lr-ui>window.LH_DOC=' + JSON.stringify({ file, sha, fromDraft }).replace(/</g, '\\u003c') + ';<\/script>' +
-    '<link data-lr-ui rel="stylesheet" href="' + A + 'assets/editor.css?v=4">' +
+    '<link data-lr-ui rel="stylesheet" href="' + A + 'assets/editor.css?v=5">' +
     '<script data-lr-ui src="' + A + 'assets/gh.js?v=3"><\/script>' +
-    '<script data-lr-ui src="' + A + 'assets/editor.js?v=4"><\/script>';
+    '<script data-lr-ui src="' + A + 'assets/editor.js?v=5"><\/script>';
   html = LH.prepareImages(html);
   html = /<\/body>/i.test(html) ? html.replace(/<\/body>(?![\s\S]*<\/body>)/i, inject + '</body>') : html + inject;
   if (!/<meta[^>]+name=["']robots/i.test(html)) html = html.replace(/<head([^>]*)>/i, '<head$1><meta data-lr-ui name="robots" content="noindex, nofollow">');
