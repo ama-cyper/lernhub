@@ -370,3 +370,6 @@ body.lr-is-dragging #lr-handle{display:none !important;}
 #lr-blockmenu .lr-danger{color:#c0392b;}
 @media (hover:none){#lr-handle{width:26px;height:30px;font-size:15px;background:rgba(125,125,125,.1);}}
 @media print{#lr-handle,#lr-dropline,#lr-blockmenu,#lr-ghost{display:none !important;}}
+
+/* Report-eigene Großansicht nie zusätzlich zur Editor-Lightbox zeigen. */
+body.lr-has-bar #zoom{display:none !important;}

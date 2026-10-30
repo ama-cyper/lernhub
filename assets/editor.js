@@ -937,15 +937,20 @@
     if (isContentImg(e.target)) { e.target.style.cursor = 'zoom-in'; positionZoomHint(e.target); }
   });
   onRegion('mouseout', e => { if (isContentImg(e.target)) hideZoomHint(); });
-  onRegion('click', e => {
-    if (editing) return;
+  /* Bildklick zuerst abfangen (Capture-Phase am Dokument), damit die
+     report-eigene Großansicht (#zoom, Bild mit min-width:100 %) gar nicht erst
+     aufgeht: Beim Bearbeiten wird das Bild nur markiert, im Lesemodus öffnet
+     die Lightbox des Editors (mit ×, Esc, Klick daneben schließt). */
+  document.addEventListener('click', e => {
     if (!isContentImg(e.target)) return;
     e.preventDefault();
+    e.stopPropagation();
+    if (editing) { selectImg(e.target); return; }
     const fig = e.target.closest('figure');
     const capEl = fig && fig.querySelector('figcaption');
     const cap = capEl ? capEl.textContent.trim() : (e.target.getAttribute('alt') || '');
     openLightbox(e.target.currentSrc || e.target.src, cap);
-  });
+  }, true);
   lightbox.addEventListener('click', e => {
     if (e.target === lightbox || e.target.closest('.lr-lb-close')) closeLightbox();
   });
