@@ -161,7 +161,11 @@ details.toggle[open]>summary::before{transform:rotate(90deg);}
    fluchtet mit dem normalen Fließtext, der Inhalt ist darunter eingerückt. */
 details.toggle .toggle-body{padding:2px 0 4px 26px;}
 details.toggle .toggle-body>p:first-child{margin-top:4px;}
-details.toggle .toggle-body:empty::before{content:"Leer";color:var(--mut);font-style:italic;opacity:.7;}
+/* Leerer Toggle: nur beim Bearbeiten ein Hinweis (wie Notions „Empty toggle“). */
+body.lr-editing details[open] > div:only-of-type:empty::before,
+body.lr-editing details[open] > section:only-of-type:empty::before{
+  content:"Leerer Toggle – hier klicken oder im Titel Enter drücken";display:block;
+  color:var(--mut);font-style:italic;font-weight:400;opacity:.6;padding:3px 0;cursor:text;}
 @media (max-width:600px){   /* auf schmalen Displays kein Überhang */
   details.toggle>summary{margin-left:0;}
 }
@@ -177,7 +181,7 @@ body.lr-editing details > summary::marker{cursor:pointer;}
    Modus, nur solange nichts darin steht — der Platzhalter ist ein <br>). */
 body.lr-editing details > summary:empty::after,
 body.lr-editing details > summary:has(> br:only-child)::after{
-  content:"Titel … · Enter = nächster Toggle · Umschalt+Enter = Inhalt";
+  content:"Toggle";
   color:var(--mut);font-weight:400;font-style:italic;opacity:.6;
   pointer-events:none;font-size:.92em;}
 

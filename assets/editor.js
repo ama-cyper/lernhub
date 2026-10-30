@@ -80,6 +80,7 @@
   const mark = n => { n.setAttribute('data-lr-ui', '1'); n.setAttribute('contenteditable', 'false'); return n; };
 
   try { document.execCommand('styleWithCSS', false, true); } catch (e) {}
+  try { document.execCommand('defaultParagraphSeparator', false, 'p'); } catch (e) {}
 
   /* ---------- Aktionsleiste ---------- */
   document.body.classList.add('lr-has-bar');
@@ -183,7 +184,7 @@
     { cat: 'Text', key: 'liste aufzählung bullet punkte', ic: '•', label: 'Aufzählung', hint: 'Liste mit Punkten', run: () => cmd('insertUnorderedList') },
     { cat: 'Text', key: 'nummeriert liste ordered zahlen', ic: '1.', label: 'Nummerierte Liste', hint: 'Liste mit Zahlen', run: () => cmd('insertOrderedList') },
     { cat: 'Text', key: 'zitat quote blockquote', ic: '❝', label: 'Zitat', hint: 'Eingerückter Zitatblock', run: () => insBlock('<blockquote class="lr-quote"><p>Zitat …</p></blockquote>') },
-    { cat: 'Bausteine', key: 'toggle aufklappen einklappen dropdown', ic: '▸', label: 'Toggle', hint: 'Aufklappbarer Abschnitt', run: () => insBlock('<details class="toggle" open><summary>Überschrift</summary><div class="toggle-body"><p>Inhalt …</p></div></details>') },
+    { cat: 'Bausteine', key: 'toggle aufklappen einklappen dropdown', ic: '▸', label: 'Toggle', hint: 'Aufklappbarer Abschnitt', run: () => insBlock('<details class="toggle" open><summary><br></summary><div class="toggle-body"></div></details>') },
     { cat: 'Bausteine', key: 'tabelle table', ic: '▦', label: 'Tabelle', hint: '2 Spalten, 2 Zeilen', run: () => insBlock('<div class="tw"><table><thead><tr><th>Spalte 1</th><th>Spalte 2</th></tr></thead><tbody><tr><td>…</td><td>…</td></tr><tr><td>…</td><td>…</td></tr></tbody></table></div>') },
     { cat: 'Bausteine', key: 'bild gif foto image upload', ic: '🖼', label: 'Bild / GIF', hint: 'Von der Festplatte einfügen', run: () => fileInput.click() },
     { cat: 'Bausteine', key: 'trennlinie linie divider hr', ic: '—', label: 'Trennlinie', hint: 'Horizontale Linie', run: () => insBlock('<hr class="lr-hr">') },
@@ -347,6 +348,7 @@
     hideHoverOverlays();
     document.body.classList.toggle('lr-editing', v);
     regions.forEach(r => r.setAttribute('contenteditable', v ? 'true' : 'false'));
+    if (v) { repair(); UM.start(); } else UM.stop();
     toggleBtn.textContent = v ? 'Fertig' : 'Bearbeiten';
     toggleBtn.classList.toggle('on', v);
     syncBar(false);            // andere Beschriftung → Leiste kann umbrechen
@@ -357,9 +359,9 @@
   onRegion('input', () => { setDirty(true); onType(); });
 
   /* ================= Format-Helfer ================= */
-  function cmd(name, val) { focusRegion(); document.execCommand(name, false, val || null); setDirty(true); }
-  function fmt(tag) { focusRegion(); document.execCommand('formatBlock', false, tag); setDirty(true); }
-  function ins(html) { focusRegion(); document.execCommand('insertHTML', false, html); setDirty(true); }
+  function cmd(name, val) { focusRegion(); act(() => document.execCommand(name, false, val || null)); }
+  function fmt(tag) { focusRegion(); act(() => document.execCommand('formatBlock', false, tag)); }
+  function ins(html) { focusRegion(); act(() => document.execCommand('insertHTML', false, html)); }
   function box(cls, ic, label) {
     insBlock('<div class="cx ' + cls + '"><div class="cx-h">' + ic + ' <span>' + label +
       '</span></div><div class="cx-b"><p>Text …</p></div></div>');
@@ -380,13 +382,17 @@
   }
 
   function insBlock(html) {
+    UM.commit(); UM.note();
     const root = focusRegion();
     const sel = window.getSelection();
     if (!sel.rangeCount || !inRegion(sel.anchorNode)) return ins(html);
 
     let node = sel.getRangeAt(0).startContainer;
     if (node.nodeType === 3) node = node.parentNode;
-    const block = blockAtCursor(node, root);
+    let block = blockAtCursor(node, root);
+    // Im Toggle-Titel: neuen Block hinter den ganzen Toggle setzen, nie hinein.
+    const inSum = node.closest && node.closest('summary');
+    if (inSum && inSum.parentElement && inSum.parentElement.tagName === 'DETAILS' && inRegion(inSum)) block = inSum.parentElement;
     if (!block || !block.parentNode) return ins(html);
 
     const frag = document.createElement('template');
@@ -408,6 +414,7 @@
     const spot = first && (first.querySelector ? (first.querySelector('p,summary,td,th,li') || first) : first);
     if (spot) { const r = document.createRange(); r.selectNodeContents(spot); r.collapse(true); sel.removeAllRanges(); sel.addRange(r); }
     if (first && first.scrollIntoView) first.scrollIntoView({ block: 'nearest' });
+    UM.commit();
     setDirty(true);
   }
 
@@ -496,12 +503,11 @@
   }
   onRegion('keydown', e => {
     if (e.key !== 'Tab' || slashMenu.style.display === 'block') return;
-    if (caretSummary()) return;            // im Toggle-Titel gilt Tab anders (s. u.)
+    if (e.defaultPrevented) return;        // im Toggle-Titel/-Inhalt schon erledigt (s. u.)
     const li = currentListItem();
     if (!li) return;                       // außerhalb von Listen normal lassen
     e.preventDefault();
-    if (e.shiftKey) outdentItem(li); else indentItem(li);
-    setDirty(true);
+    act(() => { if (e.shiftKey) outdentItem(li); else indentItem(li); });
   });
 
   /* Einrücken: den Punkt in eine Unterliste des VORHERIGEN Punktes schieben —
@@ -577,6 +583,7 @@
   pop.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.act === 'color') { setColorsOpen(!pop.classList.contains('lr-colors-open')); return; }
+    UM.commit(); UM.note();
     focusRegion();
     if (b.dataset.c) document.execCommand(b.dataset.c, false, null);
     else if (b.dataset.hl) { document.execCommand('styleWithCSS', false, true); document.execCommand('hiliteColor', false, b.dataset.hl); setColorsOpen(false); }
@@ -715,6 +722,7 @@
   imgbar.addEventListener('mousedown', e => { if (e.target.closest('button')) e.preventDefault(); });
   imgbar.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b || !selImg) return;
+    UM.commit(); UM.note();
     if (b.dataset.al) { selImg.classList.remove('a-left', 'a-right', 'a-center', 'a-full'); selImg.classList.add(b.dataset.al);
       if (b.dataset.al === 'a-full') selImg.style.width = ''; }
     else if (b.dataset.sz) { selImg.classList.remove('a-full'); selImg.style.width = b.dataset.sz + 'px'; }
@@ -949,239 +957,807 @@
     if (e.key === 'Escape' && lightbox.style.display === 'flex') { e.preventDefault(); closeLightbox(); }
   });
 
-  /* ================= Toggles (nach Notion-Vorbild) =================
-     Notion verhält sich so:
-       · Das Dreieck links schaltet auf und zu und dreht sich dabei um 90°.
-       · Auf die Überschrift zu klicken setzt den Cursor — es klappt NICHT zu.
-         Genau daran scheitert <details>/<summary>, denn dort schaltet jeder
-         Klick auf die Zeile um; im Bearbeiten-Modus kann man den Titel dann
-         nicht anfassen, ohne dass der Abschnitt zuklappt.
-       · Auf- und Zuklappen ist animiert, nicht ruckartig.
-     Umgesetzt ohne Änderung am gespeicherten HTML: die vorhandenen
-     <details>-Blöcke bleiben, wie sie sind. */
+  /* ================= Toggles – Verhalten 1:1 wie in Notion =================
+     Am echten Notion gemessen (Okt. 2026). Gespeichert wird weiterhin ganz
+     normales <details><summary>…</summary>Inhalt</details> — nur die
+     Bedienung im Browser ist neu.
+
+     Maus
+       · Dreieck            → auf/zu (animiert). Beim Bearbeiten NUR das Dreieck;
+                              ein Klick auf den Titel setzt den Cursor.
+       · Leerer Toggle      → Klick in die graue Zeile legt die erste Zeile an.
+     Im Titel
+       · Enter              → offen: neue Zeile als ERSTER Inhalt des Toggles
+                              zu:   neuer (zugeklappter) Toggle darunter
+                              Text hinter dem Cursor wandert mit.
+       · Enter am Anfang    → leerer Toggle darüber, Cursor bleibt
+       · Enter, Titel leer  → Toggle wird normaler Text
+       · Umschalt+Enter     → Zeilenumbruch im Titel
+       · Rücktaste am Anfang→ Toggle wird normaler Text (Inhalt bleibt darunter)
+       · Entf am Ende       → offen: erste Inhaltszeile wird angehängt
+                              zu:   nächster Absatz wird angehängt
+       · Strg/⌘+Enter       → auf/zu
+       · Tab / Umschalt+Tab → ganzen Toggle ein-/ausrücken
+     Im Inhalt
+       · Rücktaste am Anfang der ERSTEN Zeile  → Zeile wandert in den Titel
+       · Rücktaste am Anfang der LETZTEN Zeile → Zeile rückt aus dem Toggle aus
+       · Rücktaste direkt nach einem Toggle    → zu: in den Titel, offen: an
+                                                 dessen letzte Zeile
+       · Tab direkt unter einem Toggle         → Zeile wandert hinein (klappt auf)
+       · Umschalt+Tab                          → Zeile rückt aus
+     Überall
+       · „> “ am Zeilenanfang        → Zeile wird Toggle
+       · Strg+Umschalt+7 / ⌘⌥7       → Zeile wird Toggle
+       · Strg+Alt+T / ⌘⌥T            → alle Toggles zu (bzw. alle auf, wenn alle zu)
+       · Strg/⌘+Z, Strg/⌘+Umschalt+Z, Strg+Y → Rückgängig / Wiederholen
+         (eigener Verlauf: der Browser kennt die Umbauten oben nicht)       */
+
   const ANIM_MS = 220;
   const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const ZW = /[​﻿]/g;
+  const isDetails = n => !!n && n.nodeType === 1 && n.tagName === 'DETAILS';
+  const sumOf = d => d.querySelector(':scope > summary');
+  const nodeEl = n => (n && n.nodeType === 3) ? n.parentNode : n;
 
+  /* ---------- Auf- und Zuklappen ---------- */
+  const wantOpen = d => (d._lrWant != null ? d._lrWant : d.open);
   function animateToggle(d, open) {
     if (d._lrTimer) { clearTimeout(d._lrTimer); d._lrTimer = null; }
-    if (reduceMotion) { d.open = open; return; }
-
-    const sum = d.querySelector(':scope > summary');
+    d._lrWant = open;
+    if (reduceMotion || !d.isConnected) { d.open = open; d._lrWant = null; return; }
+    const sum = sumOf(d);
     const startH = d.getBoundingClientRect().height;
     if (open) d.open = true;                       // Inhalt muss messbar sein
-    const endH = open ? d.scrollHeight
-                      : (sum ? sum.getBoundingClientRect().height : 0);
-
+    const endH = open ? d.scrollHeight : (sum ? sum.getBoundingClientRect().height : 0);
     d.classList.add('lr-animating');
     d.style.height = startH + 'px';
     void d.offsetHeight;                           // Reflow erzwingen
     d.style.height = endH + 'px';
-
     d._lrTimer = setTimeout(() => {
       d.style.height = '';
       d.classList.remove('lr-animating');
       if (!open) d.open = false;
-      d._lrTimer = null;
+      d._lrTimer = null; d._lrWant = null;
     }, ANIM_MS);
+  }
+  function setOpen(d, open, animate) {
+    if (wantOpen(d) === open) return;
+    if (animate === false) {
+      if (d._lrTimer) { clearTimeout(d._lrTimer); d._lrTimer = null; }
+      d.classList.remove('lr-animating'); d.style.height = '';
+      d.open = open; d._lrWant = null;
+    } else animateToggle(d, open);
   }
 
   /* Sitzt der Klick auf dem Dreieck (linker Rand der Zeile)? */
   function onMarker(ev, sum) {
-    if (ev.detail === 0) return true;              // Tastatur (Enter/Leertaste)
     const r = sum.getBoundingClientRect();
     return ev.clientX <= r.left + 30;
   }
-
   document.addEventListener('click', ev => {
     const sum = ev.target.closest && ev.target.closest('summary');
     if (!sum) return;
     const d = sum.parentElement;
-    if (!d || d.tagName !== 'DETAILS') return;
+    if (!isDetails(d)) return;
     if (ev.target.closest('a')) return;            // Links im Titel gewinnen
-
-    // Beim Bearbeiten schaltet nur das Dreieck — sonst käme man an den
-    // Titeltext nicht heran, ohne den Abschnitt zuzuklappen.
-    if (editing && !onMarker(ev, sum)) { ev.preventDefault(); return; }
-
     ev.preventDefault();
-    animateToggle(d, !d.open);
+    if (editing) {
+      // Tastatur-„Klicks“ (detail 0) schalten beim Bearbeiten nie um —
+      // dafür gibt es Strg/⌘+Enter. Mit der Maus nur über das Dreieck.
+      if (ev.detail === 0 || !onMarker(ev, sum)) return;
+    }
+    animateToggle(d, !wantOpen(d));
   }, true);
 
-  /* ---------- Tastatur im Toggle-Titel (wie in Notion) --------------------
-     Enter            → neuer Toggle direkt darunter, Cursor in dessen Titel
-     Umschalt+Enter   → Cursor in den Inhalt DIESES Toggles (z. B. Antwort
-     bzw. Tab           unter die Frage schreiben); klappt ihn dabei auf
-     Umschalt+Tab     → aus dem Inhalt zurück in den Titel
-     Rücktaste        → leeren Toggle wieder entfernen
-     Ohne diese Behandlung entscheidet der Browser, was Enter in einem
-     <summary> bedeutet — und wirft den Cursor irgendwohin unter den Block. */
+  /* Leerer Toggle: Klick in die Platzhalterzeile legt die erste Zeile an. */
+  document.addEventListener('mousedown', ev => {
+    if (!editing) return;
+    const t = ev.target;
+    if (!t || !t.parentElement || !isDetails(t.parentElement) || t.tagName === 'SUMMARY') return;
+    const d = t.parentElement;
+    if (bodyOf(d) !== t || !inRegion(t) || !isEmptyEl(t)) return;
+    ev.preventDefault();
+    act(() => { t.textContent = ''; const p = el('<p><br></p>'); t.appendChild(p); placeCaret(p, false); });
+  }, true);
 
-  const nodeEl = n => (n && n.nodeType === 3) ? n.parentNode : n;
-
-  /* Steht der Cursor in einem Toggle-Titel? Dann dieses <summary> liefern. */
-  function caretSummary() {
-    const sel = window.getSelection();
-    if (!sel.rangeCount) return null;
-    const n = nodeEl(sel.anchorNode);
-    const sum = (n && n.closest) ? n.closest('summary') : null;
-    if (!sum || !inRegion(sum)) return null;
-    const d = sum.parentElement;
-    return (d && d.tagName === 'DETAILS') ? sum : null;
-  }
-  /* … und umgekehrt: im INHALT eines Toggles? Dann das <details> liefern. */
-  function caretDetails() {
-    const sel = window.getSelection();
-    if (!sel.rangeCount) return null;
-    const n = nodeEl(sel.anchorNode);
-    if (!n || !n.closest || n.closest('summary')) return null;
-    const d = n.closest('details');
-    return (d && inRegion(d)) ? d : null;
-  }
-
-  /* Der Inhaltsrahmen eines Klapp-Blocks. Die Toggle-Bausteine benutzen
-     „.toggle-body“, die berichtseigenen Blöcke ihr eigenes Gegenstück
-     („.solution-body“ …). Fehlt so ein Rahmen, liegt der Inhalt direkt
-     im <details> — dann ist das <details> selbst der Rahmen. */
+  /* ---------- Bausteine eines Toggles ----------------------------------------
+     Titel = <summary>. Der Inhalt steckt meist in einem Rahmen (.toggle-body,
+     .tgb, .solution-body …); fehlt der, liegen die Inhaltsblöcke direkt im
+     <details> — dann ist das <details> selbst der Rahmen.                    */
+  const BODY_CLS = /(^|[\s_-])(body|tgb|tb|content|inner|answer|antwort|loesung|lösung|sol-b)([\s_-]|$)|body(\s|$)/i;
   function bodyOf(d) {
-    for (const c of d.children) {
-      if (c.tagName === 'SUMMARY') continue;
-      return /(^|\s)[\w-]*body(\s|$)/.test(c.className || '') ? c : d;
-    }
-    return d;
+    const rest = [...d.children].filter(c => c.tagName !== 'SUMMARY');
+    if (rest.length === 1 && /^(DIV|SECTION)$/.test(rest[0].tagName) &&
+        (BODY_CLS.test(rest[0].className || '') || !rest[0].className)) return rest[0];
+    const hit = rest.find(c => /^(DIV|SECTION)$/.test(c.tagName) && BODY_CLS.test(c.className || ''));
+    return hit || d;
+  }
+  /* Inhaltsblöcke eines Toggles in Reihenfolge. Ein Rahmen, der nur Text ohne
+     eigene Absätze enthält, zählt selbst als (einzige) Zeile. */
+  function kidsOf(d) {
+    const body = bodyOf(d);
+    if (body === d) return [...d.children].filter(c => c.tagName !== 'SUMMARY' && !c.hasAttribute('data-lr-ui'));
+    if (body.children.length === 0 && !isEmptyEl(body)) return [body];
+    if (body.firstElementChild && !hasBlockKids(body) && body.textContent.replace(ZW, '').trim()) return [body];
+    return [...body.children];
+  }
+  function insertFirstKid(d, node) {
+    const body = bodyOf(d);
+    if (body === d) { const s = sumOf(d); d.insertBefore(node, s ? s.nextSibling : d.firstChild); }
+    else body.insertBefore(node, body.firstChild);
+  }
+  function appendKid(d, node) { bodyOf(d).appendChild(node); }
+  /* Gehört dieser Block direkt in einen Toggle? Dann {d, kids, i}. */
+  function kidInfo(block) {
+    if (!block || block.tagName === 'SUMMARY') return null;
+    const p = block.parentElement;
+    let d = null;
+    if (isDetails(p)) d = p;
+    else if (p && isDetails(p.parentElement) && bodyOf(p.parentElement) === p) d = p.parentElement;
+    if (!d || !inRegion(d)) return null;
+    const kids = kidsOf(d);
+    const i = kids.indexOf(block);
+    return i < 0 ? null : { d, kids, i };
   }
 
-  const isTextBlock = n => n && /^(P|H1|H2|H3|H4|H5|H6|DIV|UL|OL|LI|BLOCKQUOTE|TABLE)$/.test(n.tagName);
+  const BLOCK_SEL = 'p,div,ul,ol,table,details,figure,blockquote,pre,h1,h2,h3,h4,h5,h6,hr,section';
+  const hasBlockKids = n => !!n.querySelector(BLOCK_SEL);
+  function isEmptyEl(n) {
+    if (!n) return true;
+    if (n.querySelector && n.querySelector('img,table,hr,iframe,video,svg,audio,canvas')) return false;
+    return !n.textContent.replace(ZW, '').replace(/\s/g, '');
+  }
+  /* Einfacher Textblock, der mit einem anderen verschmolzen werden darf. */
+  const mergeable = n => !!n && n.nodeType === 1 &&
+    /^(P|H[1-6]|DIV|SUMMARY|LI|TD|TH)$/.test(n.tagName) && !hasBlockKids(n) && !n.matches('[data-lr-ui]');
+
+  /* Der Block, in dem der Cursor steht (Titel zählt als eigener Block). */
+  function blockAt(n) {
+    n = nodeEl(n);
+    while (n && n.nodeType === 1 && !regions.includes(n)) {
+      if (n.tagName === 'SUMMARY' || n.tagName === 'LI') return n;
+      const disp = getComputedStyle(n).display;
+      if (BLOCKISH[disp] || disp === 'list-item') return n;
+      n = n.parentNode;
+    }
+    return null;
+  }
+  function caret() {
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return null;
+    const r = sel.getRangeAt(0);
+    if (!inRegion(r.startContainer)) return null;
+    return { sel, r, collapsed: sel.isCollapsed };
+  }
+  function textBefore(host, r) {
+    const pre = document.createRange();
+    pre.selectNodeContents(host);
+    try { pre.setEnd(r.startContainer, r.startOffset); } catch (e) { return 'x'; }
+    const frag = pre.cloneContents();
+    if (frag.querySelector && frag.querySelector('img')) return 'x';
+    return pre.toString().replace(ZW, '');
+  }
+  function textAfter(host, r) {
+    const post = document.createRange();
+    post.selectNodeContents(host);
+    try { post.setStart(r.endContainer, r.endOffset); } catch (e) { return 'x'; }
+    const frag = post.cloneContents();
+    if (frag.querySelector && frag.querySelector('img')) return 'x';
+    return post.toString().replace(ZW, '');
+  }
+  const atStart = (host, c) => c.collapsed && host.contains(c.r.startContainer) && textBefore(host, c.r) === '';
+  const atEnd = (host, c) => c.collapsed && host.contains(c.r.endContainer) && textAfter(host, c.r).replace(/\n$/, '') === '';
 
   /* Cursor an den Anfang bzw. das Ende eines Elements setzen. */
-  function placeCaret(host, atEnd) {
+  function placeCaret(host, atEndPos) {
     if (!host) return;
     const sel = window.getSelection(), r = document.createRange();
-    let last = null;
-    if (atEnd) {
-      const w = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
-      let n; while ((n = w.nextNode())) last = n;
-    }
-    if (last) { r.setStart(last, last.textContent.length); r.collapse(true); }
-    else { r.selectNodeContents(host); r.collapse(true); }
-    sel.removeAllRanges(); sel.addRange(r);
-    if (host.scrollIntoView) host.scrollIntoView({ block: 'nearest' });
-  }
-
-  /* Ein leerer Titel braucht einen Umbruch als Platzhalter, sonst hat der
-     Cursor keine Zeile, in der er stehen kann. Beim Speichern fliegt er
-     wieder heraus (siehe cleanDoc). */
-  function padSummary(sum) {
-    while (sum.lastChild && sum.lastChild.nodeName === 'BR') sum.lastChild.remove();
-    if (!sum.textContent.trim() && !sum.querySelector('img'))
-      sum.appendChild(document.createElement('br'));
-  }
-
-  /* Umschalt+Enter / Tab: in den Inhalt des Toggles springen. */
-  function focusToggleBody(d) {
-    if (!d.open) animateToggle(d, true);
-    const body = bodyOf(d);
-    let last = null;
-    for (const c of body.children) if (c.tagName !== 'SUMMARY') last = c;
-    if (!isTextBlock(last)) {
-      last = el('<p><br></p>');
-      body.appendChild(last);
-      setDirty(true);
-    }
-    placeCaret(last, true);
-  }
-
-  /* Enter: neuen Toggle auf derselben Ebene anlegen. Text hinter dem Cursor
-     wandert in den neuen Titel — genauso teilt Notion eine Zeile. */
-  function newToggleAfter(d, sum) {
-    const sel = window.getSelection();
-    let tail = null;
-    if (sel.rangeCount) {
-      const r = sel.getRangeAt(0);
-      if (!sel.isCollapsed) r.deleteContents();
-      // Nur teilen, wenn das Ende der Auswahl wirklich im Titel liegt —
-      // sonst würde eine über den Block hinausreichende Auswahl den ganzen
-      // Titel mitnehmen.
-      if (sum.contains(r.endContainer)) {
-        const cut = document.createRange();
-        cut.setStart(r.endContainer, r.endOffset);
-        cut.setEnd(sum, sum.childNodes.length);
-        tail = cut.extractContents();
-      }
-    }
-    padSummary(sum);
-
-    const nd = document.createElement('details');
-    if (d.className) nd.className = d.className;      // gleiche Optik wie der Nachbar
-    nd.open = true;
-    const ns = document.createElement('summary');
-    if (tail) ns.appendChild(tail);
-    padSummary(ns);
-    nd.appendChild(ns);
-
-    const body = bodyOf(d);
-    if (body === d) nd.appendChild(el('<p><br></p>'));
+    const w = document.createTreeWalker(host, NodeFilter.SHOW_TEXT, {
+      acceptNode: t => t.data.replace(ZW, '').length || t.data.length ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP });
+    let first = null, last = null, t;
+    while ((t = w.nextNode())) { if (!first) first = t; last = t; }
+    if (atEndPos && last) { r.setStart(last, last.data.length); }
+    else if (!atEndPos && first) { r.setStart(first, 0); }
     else {
-      const nb = document.createElement(body.tagName.toLowerCase());
-      if (body.className) nb.className = body.className;
-      nb.appendChild(el('<p><br></p>'));
+      const br = host.querySelector('br');
+      if (br) r.setStartBefore(br); else r.setStart(host, atEndPos ? host.childNodes.length : 0);
+    }
+    r.collapse(true);
+    sel.removeAllRanges(); sel.addRange(r);
+    const box = host.getBoundingClientRect ? host : host.parentElement;
+    if (box && box.scrollIntoView) box.scrollIntoView({ block: 'nearest' });
+  }
+  function saveSel() {
+    const s = window.getSelection();
+    if (!s.rangeCount) return null;
+    const r = s.getRangeAt(0);
+    return { sc: r.startContainer, so: r.startOffset, ec: r.endContainer, eo: r.endOffset };
+  }
+  function restoreSel(x) {
+    if (!x || !x.sc.isConnected || !x.ec.isConnected) return false;
+    const len = n => n.nodeType === 3 ? n.data.length : n.childNodes.length;
+    try {
+      const r = document.createRange();
+      r.setStart(x.sc, Math.min(x.so, len(x.sc)));
+      r.setEnd(x.ec, Math.min(x.eo, len(x.ec)));
+      const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+      const b = nodeEl(x.sc); if (b && b.scrollIntoView) b.scrollIntoView({ block: 'nearest' });
+      return true;
+    } catch (e) { return false; }
+  }
+
+  /* Leerer Titel/Absatz braucht einen <br>, sonst hat der Cursor keine Zeile.
+     Beim Speichern fliegt der Platzhalter wieder heraus (cleanDoc). */
+  function pad(n) {
+    if (!n) return;
+    if (isEmptyEl(n)) {
+      [...n.childNodes].forEach(c => { if (c.nodeType === 3 || c.nodeName === 'BR') c.remove(); });
+      n.appendChild(document.createElement('br'));
+    }
+  }
+  /* Abschließenden Platzhalter-<br> entfernen, bevor etwas angehängt wird. */
+  function trimTail(n) {
+    while (n.lastChild && (n.lastChild.nodeName === 'BR' ||
+      (n.lastChild.nodeType === 3 && !n.lastChild.data.replace(ZW, '')))) n.lastChild.remove();
+  }
+  /* Inhalt von src ans Ende von target hängen; Cursor an die Nahtstelle. */
+  function mergeInto(target, src) {
+    trimTail(target);
+    const r = document.createRange();
+    r.selectNodeContents(target); r.collapse(false);
+    const mark0 = document.createTextNode('');
+    target.appendChild(mark0);
+    trimTail(src);
+    while (src.firstChild) target.appendChild(src.firstChild);
+    pad(target);
+    const sel = window.getSelection(), rr = document.createRange();
+    rr.setStart(mark0, 0); rr.collapse(true);
+    sel.removeAllRanges(); sel.addRange(rr);
+    return mark0;
+  }
+  /* Rahmen (Body) bleibt bestehen, alles andere wird entfernt. */
+  function removeBlock(block, d) {
+    if (d && bodyOf(d) === block) { block.textContent = ''; return; }
+    block.remove();
+  }
+  /* Letzter sichtbarer Textblock in einem Toggle (für Rücktaste danach). */
+  function lastVisibleText(d) {
+    if (!wantOpen(d)) return sumOf(d);
+    const kids = kidsOf(d);
+    let n = kids[kids.length - 1];
+    if (!n) return sumOf(d);
+    for (let guard = 0; n && guard < 50; guard++) {
+      if (isDetails(n)) return lastVisibleText(n);
+      if (mergeable(n)) return n;
+      if (/^(UL|OL)$/.test(n.tagName)) { n = n.lastElementChild; continue; }
+      const kidsN = [...n.children].filter(c => !c.hasAttribute('data-lr-ui'));
+      if (!kidsN.length) return null;
+      n = kidsN[kidsN.length - 1];
+      if (n.tagName === 'LI' && n.querySelector(':scope > ul, :scope > ol')) n = n.querySelector(':scope > ul, :scope > ol');
+    }
+    return null;
+  }
+
+  /* ---------- Neue Toggles ---------- */
+  function makeToggle(like, titleNodes, open) {
+    const nd = document.createElement('details');
+    nd.className = (like && like.className) || 'toggle';
+    if (open) nd.open = true;
+    const ns = document.createElement('summary');
+    (titleNodes || []).forEach(n => ns.appendChild(n));
+    pad(ns);
+    nd.appendChild(ns);
+    const lb = like ? bodyOf(like) : null;
+    if (!like || lb !== like) {
+      const nb = document.createElement(lb ? lb.tagName.toLowerCase() : 'div');
+      nb.className = lb ? lb.className : 'toggle-body';
       nd.appendChild(nb);
     }
-
-    d.parentNode.insertBefore(nd, d.nextSibling);
-    placeCaret(ns, false);
-    setDirty(true);
+    return nd;
   }
-
-  /* Rücktaste am Anfang eines vollständig leeren Toggles: Block entfernen. */
-  function isEmptyToggle(d, sum) {
-    if (sum.textContent.trim() || sum.querySelector('img')) return false;
-    if (d.querySelector('img,table,hr,iframe')) return false;
+  /* Block (Absatz, Überschrift …) in einen Toggle verwandeln. */
+  function blockToToggle(block, open) {
+    const nodes = [...block.childNodes];
+    const nd = makeToggle(null, nodes, open);
+    block.replaceWith(nd);
+    return nd;
+  }
+  /* Toggle zurück in normalen Text verwandeln; der Inhalt bleibt darunter. */
+  function toggleToText(d) {
+    const s = sumOf(d);
+    const p = document.createElement('p');
+    if (s) while (s.firstChild) p.appendChild(s.firstChild);
+    pad(p);
+    const parent = d.parentNode;
+    parent.insertBefore(p, d);
     const body = bodyOf(d);
-    const txt = (body === d)
-      ? [...d.children].filter(c => c.tagName !== 'SUMMARY').map(c => c.textContent).join('')
-      : body.textContent;
-    return !txt.trim();
-  }
-  function atStartOf(host) {
-    const sel = window.getSelection();
-    if (!sel.rangeCount || !sel.isCollapsed) return false;
-    const r = sel.getRangeAt(0), pre = document.createRange();
-    pre.selectNodeContents(host);
-    pre.setEnd(r.startContainer, r.startOffset);
-    return !pre.toString().trim();
-  }
-  function removeToggle(d) {
-    const prev = d.previousElementSibling;
-    const host = d.parentNode;
+    const kids = body === d ? [...d.children].filter(c => c.tagName !== 'SUMMARY') : null;
+    let after = p;
+    if (kids) kids.forEach(k => { parent.insertBefore(k, after.nextSibling); after = k; });
+    else if (hasBlockKids(body) || isEmptyEl(body)) { [...body.childNodes].forEach(k => { parent.insertBefore(k, after.nextSibling); after = k; }); }
+    else { const q = document.createElement('p'); while (body.firstChild) q.appendChild(body.firstChild); parent.insertBefore(q, after.nextSibling); }
     d.remove();
-    if (prev && prev.tagName === 'DETAILS') placeCaret(prev.querySelector(':scope > summary'), true);
-    else if (prev) placeCaret(prev, true);
-    else placeCaret(host, false);
-    setDirty(true);
+    placeCaret(p, false);
+    return p;
   }
 
-  onRegion('keydown', e => {
-    if (!editing || e.defaultPrevented) return;
-    if (slashMenu.style.display === 'block') return;
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
+  /* ---------- Ein- und Ausrücken ---------- */
+  function indentInto(prevD, block) {
+    const keep = saveSel();
+    setOpen(prevD, true, false);
+    const body = bodyOf(prevD);
+    if (body !== prevD && kidsOf(prevD)[0] === body) {      // Rahmen mit reinem Text → erst in Absatz fassen
+      const p = document.createElement('p'); while (body.firstChild) p.appendChild(body.firstChild); body.appendChild(p);
+    }
+    if (body !== prevD && isEmptyEl(body) && !body.children.length) body.textContent = '';
+    appendKid(prevD, block);
+    restoreSel(keep) || placeCaret(block.tagName === 'DETAILS' ? sumOf(block) : block, false);
+  }
+  function outdent(block) {
+    const info = kidInfo(block);
+    if (!info) return false;
+    const { d, kids, i } = info;
+    if (bodyOf(d) === block) return false;               // Rahmen selbst bleibt
+    const keep = saveSel();
+    const follow = kids.slice(i + 1);
+    d.parentNode.insertBefore(block, d.nextSibling);
+    if (isDetails(block)) {
+      // Wie in Notion: nachfolgende Zeilen werden Inhalt des ausgerückten Toggles.
+      follow.forEach(f => appendKid(block, f));
+      if (follow.length) setOpen(block, true, false);
+    } else {
+      // Ein Absatz kann keine Unterzeilen tragen — sie rücken mit aus.
+      let after = block;
+      follow.forEach(f => { d.parentNode.insertBefore(f, after.nextSibling); after = f; });
+    }
+    if (!kidsOf(d).length && bodyOf(d) !== d) bodyOf(d).textContent = '';
+    restoreSel(keep);
+    return true;
+  }
 
-    const sum = caretSummary();
-    if (sum) {
-      const d = sum.parentElement;
-      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); return newToggleAfter(d, sum); }
-      if (e.key === 'Enter' && e.shiftKey) { e.preventDefault(); return focusToggleBody(d); }
-      if (e.key === 'Tab' && !e.shiftKey) { e.preventDefault(); return focusToggleBody(d); }
-      if (e.key === 'Backspace' && isEmptyToggle(d, sum) && atStartOf(sum)) {
-        e.preventDefault(); return removeToggle(d);
+  /* ================= Tastenlogik ================= */
+  /* kind: 'enter' | 'shiftenter' | 'backspace' | 'delete' | 'tab' | 'shifttab'.
+     Rückgabe true = erledigt (Browser-Standard unterdrücken). */
+  function handleKey(kind) {
+    const c = caret();
+    if (!c) return false;
+    const block = blockAt(c.r.startContainer);
+    if (!block) return false;
+    const endBlock = blockAt(c.r.endContainer);
+
+    // Auswahl über Blockgrenzen am Titel → Browser würde <summary> zerreißen.
+    if (!c.collapsed && endBlock !== block && (block.tagName === 'SUMMARY' || (endBlock && endBlock.tagName === 'SUMMARY'))) {
+      if (kind === 'tab' || kind === 'shifttab') return true;
+      act(() => {
+        c.r.deleteContents();
+        repair();
+        const r2 = window.getSelection().rangeCount ? window.getSelection().getRangeAt(0) : null;
+        if (r2) r2.collapse(true);
+      });
+      if (kind === 'backspace' || kind === 'delete') return true;
+      return handleKey(kind);
+    }
+
+    /* ---------- Cursor im Titel ---------- */
+    if (block.tagName === 'SUMMARY' && isDetails(block.parentElement)) {
+      const sum = block, d = sum.parentElement;
+      if (kind === 'enter') {
+        if (isEmptyEl(sum)) { act(() => toggleToText(d)); return true; }
+        if (c.collapsed && atStart(sum, c)) {
+          act(() => { const nd = makeToggle(d, [], false); d.parentNode.insertBefore(nd, d); placeCaret(sum, false); });
+          return true;
+        }
+        act(() => {
+          const r = c.r;
+          if (!c.collapsed) r.deleteContents();
+          const cut = document.createRange();
+          cut.setStart(r.endContainer, r.endOffset);
+          cut.setEnd(sum, sum.childNodes.length);
+          const tail = cut.extractContents();
+          [...tail.querySelectorAll('br')].forEach(b => { if (!b.nextSibling) b.remove(); });
+          pad(sum);
+          if (wantOpen(d)) {
+            const p = document.createElement('p');
+            p.appendChild(tail); pad(p);
+            const body = bodyOf(d);
+            if (body !== d && kidsOf(d)[0] === body && !isEmptyEl(body)) {
+              const q = document.createElement('p'); while (body.firstChild) q.appendChild(body.firstChild); body.appendChild(q);
+            }
+            if (body !== d && isEmptyEl(body) && !body.children.length) body.textContent = '';
+            insertFirstKid(d, p);
+            placeCaret(p, false);
+          } else {
+            const nd = makeToggle(d, [tail], false);
+            d.parentNode.insertBefore(nd, d.nextSibling);
+            placeCaret(sumOf(nd), false);
+          }
+        });
+        return true;
       }
+      if (kind === 'shiftenter') {
+        act(() => {
+          const r = c.r;
+          if (!c.collapsed) r.deleteContents();
+          trimEmptyText(sum);
+          const br = document.createElement('br');
+          r.insertNode(br);
+          // Leerzeichen direkt nach dem Umbruch würde der Browser schlucken.
+          const nx = br.nextSibling;
+          if (nx && nx.nodeType === 3 && /^ /.test(nx.data)) nx.data = '\u00a0' + nx.data.slice(1);
+          // Am Zeilenende braucht der Umbruch einen zweiten <br>, sonst springt der Cursor nicht.
+          if (!br.nextSibling || (br.nextSibling.nodeType === 3 && !br.nextSibling.data.replace(ZW, '') && !br.nextSibling.nextSibling))
+            sum.appendChild(document.createElement('br'));
+          const rr = document.createRange(); rr.setStartAfter(br); rr.collapse(true);
+          c.sel.removeAllRanges(); c.sel.addRange(rr);
+        });
+        return true;
+      }
+      if (kind === 'backspace') {
+        if (c.collapsed && atStart(sum, c)) { act(() => toggleToText(d)); return true; }
+        if (c.collapsed && isEmptyEl(sum)) { act(() => toggleToText(d)); return true; }
+        return false;                                   // normales Löschen im Titel
+      }
+      if (kind === 'delete') {
+        if (!(c.collapsed && atEnd(sum, c))) return false;
+        if (wantOpen(d)) {
+          const first = kidsOf(d)[0];
+          if (first && mergeable(first)) act(() => { const was = bodyOf(d) === first; mergeInto(sum, first); if (!was) first.remove(); });
+          else if (first && isEmptyEl(first)) act(() => removeBlock(first, d));
+        } else {
+          const nx = d.nextElementSibling;
+          if (nx && mergeable(nx) && !isDetails(nx)) act(() => { mergeInto(sum, nx); nx.remove(); });
+        }
+        return true;                                    // nie dem Browser überlassen
+      }
+      if (kind === 'tab') {
+        const prev = d.previousElementSibling;
+        if (isDetails(prev) && inRegion(prev)) act(() => indentInto(prev, d));
+        return true;
+      }
+      if (kind === 'shifttab') { act(() => outdent(d)); return true; }
+      return false;
+    }
+
+    /* ---------- Cursor in einer Zeile ---------- */
+    const info = kidInfo(block);
+    if ((kind === 'enter' || kind === 'shiftenter') && info && bodyOf(info.d) === block) {
+      // Inhalt liegt ohne Absatz im Rahmen: erst in <p> fassen, dann normal umbrechen.
+      const keep = saveSel();
+      const p = document.createElement('p');
+      while (block.firstChild) p.appendChild(block.firstChild);
+      block.appendChild(p);
+      restoreSel(keep);
+      return false;
+    }
+    if (kind === 'backspace' && c.collapsed && atStart(block, c)) {
+      if (info) {
+        const { d, kids, i } = info;
+        const sum = sumOf(d);
+        if (i === 0) {
+          if (!sum) return false;
+          if (isEmptyEl(block) && !block.querySelector('img')) {
+            act(() => { removeBlock(block, d); placeCaret(sum, true); });
+            return true;
+          }
+          if (mergeable(block)) {
+            act(() => { const isBody = bodyOf(d) === block; mergeInto(sum, block); if (!isBody) block.remove(); });
+            return true;
+          }
+          return false;
+        }
+        if (i === kids.length - 1 && bodyOf(d) !== block) {
+          act(() => outdent(block));
+          return true;
+        }
+      }
+      // Direkt nach einem Toggle: in dessen sichtbares Ende hineinziehen.
+      const prev = block.previousElementSibling;
+      if (isDetails(prev) && inRegion(prev)) {
+        const target = lastVisibleText(prev);
+        if (!target) return true;
+        if (isEmptyEl(block)) { act(() => { block.remove(); placeCaret(target, true); }); return true; }
+        if (mergeable(block)) { act(() => { mergeInto(target, block); block.remove(); }); return true; }
+        return true;
+      }
+      return false;
+    }
+    if (kind === 'tab' || kind === 'shifttab') {
+      if (block.tagName === 'LI' || block.closest('li')) return false;       // Listen rücken selbst ein
+      if (block.closest('td,th')) return false;
+      if (kind === 'tab') {
+        const prev = block.previousElementSibling;
+        if (isDetails(prev) && inRegion(prev) && (!info || bodyOf(info.d) !== block)) act(() => indentInto(prev, block));
+        return true;
+      }
+      if (info && bodyOf(info.d) !== block) act(() => outdent(block));
+      return true;
+    }
+    return false;
+  }
+  function trimEmptyText(n) {
+    [...n.childNodes].forEach(c => { if (c.nodeType === 3 && !c.data.length) c.remove(); });
+    if (n.childNodes.length === 1 && n.firstChild.nodeName === 'BR') n.firstChild.remove();
+  }
+
+  /* Zeile in Toggle verwandeln (Strg+Umschalt+7, „> “). */
+  function convertBlock(open, stripPrefix) {
+    const c = caret();
+    if (!c) return false;
+    const block = blockAt(c.r.startContainer);
+    if (!block || block.tagName === 'SUMMARY' || !/^(P|H[1-6]|DIV)$/.test(block.tagName)) return false;
+    if (hasBlockKids(block) || block.closest('li,td,th')) return false;
+    if (regions.includes(block)) return false;
+    const info = kidInfo(block);
+    if (info && bodyOf(info.d) === block) return false;
+    if (block.matches('[class*="cx-h"]')) return false;
+    act(() => {
+      if (stripPrefix) {
+        const r = document.createRange();
+        r.selectNodeContents(block);
+        r.setEnd(c.r.startContainer, c.r.startOffset);
+        r.deleteContents();
+      }
+      const nd = blockToToggle(block, open);
+      placeCaret(sumOf(nd), !stripPrefix);
+    });
+    return true;
+  }
+
+  /* Alle Toggles zu – oder alle auf, wenn schon alle zu sind. */
+  function toggleAll() {
+    const all = regions.flatMap(r => [...r.querySelectorAll('details')]);
+    if (!all.length) return;
+    const anyOpen = all.some(d => wantOpen(d));
+    const anim = all.length <= 20;
+    all.forEach(d => setOpen(d, !anyOpen, anim));
+  }
+
+  /* Struktur reparieren, falls der Browser (Einfügen, Diktat …) doch einmal
+     an einem Toggle vorbeigearbeitet hat: genau ein <summary>, ganz vorn,
+     ohne Absätze darin. */
+  function repair() {
+    regions.forEach(rg => rg.querySelectorAll('details').forEach(d => {
+      let sums = [...d.children].filter(c => c.tagName === 'SUMMARY');
+      if (!sums.length) { const s = document.createElement('summary'); pad(s); d.insertBefore(s, d.firstChild); sums = [s]; }
+      if (d.firstElementChild !== sums[0]) d.insertBefore(sums[0], d.firstChild);
+      sums.slice(1).reverse().forEach(x => {
+        const p = document.createElement('p');
+        while (x.firstChild) p.appendChild(x.firstChild);
+        x.remove(); pad(p);
+        insertFirstKid(d, p);
+      });
+      const s = sums[0];
+      s.querySelectorAll(':scope > p, :scope > div, :scope > h1, :scope > h2, :scope > h3, :scope > h4').forEach(b => {
+        const frag = document.createDocumentFragment();
+        if (b.previousSibling) frag.appendChild(document.createElement('br'));
+        while (b.firstChild) frag.appendChild(b.firstChild);
+        b.replaceWith(frag);
+      });
+      if (isEmptyEl(s) && !s.querySelector('br')) pad(s);
+    }));
+  }
+
+  /* ---------- Eingaben abfangen ---------- */
+  document.addEventListener('keydown', e => {
+    // Strg+Alt+T / ⌘⌥T: alle Toggles — auch im Lesemodus.
+    if ((e.ctrlKey || e.metaKey) && e.altKey && !e.shiftKey && e.code === 'KeyT') {
+      e.preventDefault(); toggleAll(); return;
+    }
+    if (!editing || e.isComposing || e.defaultPrevented) return;
+    if (!inRegion(e.target) && !inRegion(document.activeElement)) return;
+    const mod = e.ctrlKey || e.metaKey;
+
+    // Rückgängig / Wiederholen (Strg+Z bzw. ⌘Z; Wiederholen: +Umschalt oder Strg+Y)
+    if (mod && !e.altKey) {
+      const k = (e.key || '').toLowerCase();
+      if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
+      if ((k === 'z' && e.shiftKey) || (k === 'y' && !e.shiftKey && e.ctrlKey)) { e.preventDefault(); redo(); return; }
+    }
+    if (!caret()) return;
+    UM.note();
+    if (slashMenu.style.display === 'block') return;
+
+    // Strg/⌘+Enter: Toggle auf/zu
+    if (mod && e.key === 'Enter') {
+      const b = blockAt(caret().r.startContainer);
+      if (b && b.tagName === 'SUMMARY' && isDetails(b.parentElement)) { e.preventDefault(); setOpen(b.parentElement, !wantOpen(b.parentElement)); }
       return;
     }
-    // Umschalt+Tab im Inhalt: zurück in den Titel (Listen behalten ihr Ausrücken).
-    if (e.key === 'Tab' && e.shiftKey && !currentListItem()) {
-      const d = caretDetails();
-      if (d) { e.preventDefault(); placeCaret(d.querySelector(':scope > summary'), true); }
+    // Strg+Umschalt+7 (Windows) / ⌘⌥7 (Mac): Zeile → Toggle
+    if (e.code === 'Digit7' && ((e.ctrlKey && e.shiftKey && !e.altKey) || (e.metaKey && e.altKey))) {
+      e.preventDefault(); convertBlock(false, false); return;
     }
+    if (mod || e.altKey) return;
+
+    let kind = null;
+    if (e.key === 'Enter') kind = e.shiftKey ? 'shiftenter' : 'enter';
+    else if (e.key === 'Backspace' && !e.shiftKey) kind = 'backspace';
+    else if (e.key === 'Delete' && !e.shiftKey) kind = 'delete';
+    else if (e.key === 'Tab') kind = e.shiftKey ? 'shifttab' : 'tab';
+    if (!kind) return;
+    if ((kind === 'tab' || kind === 'shifttab') && currentListItem()) return;   // Listen-Einzug weiter unten
+    if (handleKey(kind)) e.preventDefault();
+  }, true);
+
+  /* Bildschirmtastatur (iPad/Handy) meldet Tasten oft nur als beforeinput. */
+  document.addEventListener('beforeinput', e => {
+    if (!editing || !inRegion(e.target)) return;
+    const t = e.inputType;
+    if (t === 'historyUndo') { e.preventDefault(); undo(); return; }
+    if (t === 'historyRedo') { e.preventDefault(); redo(); return; }
+    UM.boundary(t);
+    if (slashMenu.style.display === 'block') return;
+
+    // Markdown-Kürzel „> “ am Zeilenanfang → Toggle
+    if (t === 'insertText' && e.data === ' ') {
+      const c = caret();
+      if (c && c.collapsed) {
+        const b = blockAt(c.r.startContainer);
+        if (b && b.tagName !== 'SUMMARY' && textBefore(b, c.r) === '>') {
+          if (convertBlock(true, true)) { e.preventDefault(); return; }
+        }
+      }
+    }
+    const map = { insertParagraph: 'enter', insertLineBreak: 'shiftenter',
+      deleteContentBackward: 'backspace', deleteContentForward: 'delete' };
+    if (map[t] && handleKey(map[t])) e.preventDefault();
+  }, true);
+
+  onRegion('input', () => { if (editing) repair(); });
+  /* Einfügen in einen Titel: erste Zeile in den Titel, weitere Zeilen werden
+     eigene Zeilen (offen: Inhalt des Toggles, zu: Absätze darunter). */
+  onRegion('paste', e => {
+    if (!editing) return;
+    const c = caret();
+    const b = c && blockAt(c.r.startContainer);
+    const eb = c && blockAt(c.r.endContainer);
+    if (!b || (b.tagName !== 'SUMMARY' && !(eb && eb.tagName === 'SUMMARY'))) { setTimeout(repair, 0); return; }
+    const txt = ((e.clipboardData && e.clipboardData.getData('text/plain')) || '').replace(/\r/g, '');
+    e.preventDefault();
+    const lines = txt.split('\n');
+    while (lines.length > 1 && !lines[lines.length - 1].trim()) lines.pop();
+    act(() => {
+      if (!c.collapsed) { c.r.deleteContents(); repair(); }
+      const r = window.getSelection().getRangeAt(0);
+      const sum = blockAt(r.startContainer);
+      const d = sum && sum.parentElement;
+      const t = document.createTextNode(lines[0] || '');
+      trimEmptyText(sum);
+      r.insertNode(t);
+      const rr = document.createRange(); rr.setStart(t, t.data.length); rr.collapse(true);
+      window.getSelection().removeAllRanges(); window.getSelection().addRange(rr);
+      const rest = lines.slice(1).map(l => { const q = document.createElement('p'); q.textContent = l; pad(q); return q; });
+      if (!rest.length || !isDetails(d)) return;
+      if (wantOpen(d)) {
+        const body = bodyOf(d);
+        if (body !== d && kidsOf(d)[0] === body && !isEmptyEl(body)) {
+          const q = document.createElement('p'); while (body.firstChild) q.appendChild(body.firstChild); body.appendChild(q);
+        }
+        if (body !== d && isEmptyEl(body) && !body.children.length) body.textContent = '';
+        rest.reverse().forEach(q => insertFirstKid(d, q));
+        rest.reverse();
+      } else {
+        let after = d;
+        rest.forEach(q => { d.parentNode.insertBefore(q, after.nextSibling); after = q; });
+      }
+      placeCaret(rest[rest.length - 1], true);
+    });
   });
+
+  /* ================= Rückgängig / Wiederholen =================
+     Eigener Verlauf über einen MutationObserver: jede Änderung im Report
+     (Tippen, Formatieren, Toggle-Umbau, Bilder) wird mitgeschrieben und lässt
+     sich exakt umkehren — mit denselben DOM-Knoten, damit nichts von den
+     Report-eigenen Funktionen (Bild-Zoom …) verloren geht.                  */
+  const IGNORE_ATTR = { open: 1, contenteditable: 1, draggable: 1, src: 1, spellcheck: 1, 'data-lr-sticky': 1 };
+  const stripLr = v => (v || '').split(/\s+/).filter(x => x && !/^lr-(sel|animating)$/.test(x)).join(' ');
+  function keepRec(m) {
+    if (m.type === 'attributes') {
+      const a = m.attributeName;
+      if (IGNORE_ATTR[a]) return false;
+      if (m.target.tagName === 'DETAILS' && (a === 'style' || a === 'class')) return false;
+      if (a === 'class' && stripLr(m.oldValue) === stripLr(m.target.getAttribute('class'))) return false;
+      if (a === 'style' && m.target.tagName === 'IMG' && !editing) return false;
+      return true;
+    }
+    if (m.type === 'childList') {
+      const ui = n => n.nodeType === 1 && n.hasAttribute('data-lr-ui');
+      const all = [...m.addedNodes, ...m.removedNodes];
+      return all.length && !all.every(ui);
+    }
+    return true;
+  }
+  const UM = {
+    undo: [], redo: [], cur: null, obs: null, timer: null, applying: false, pending: null, lastCls: null,
+    start() {
+      if (this.obs) return;
+      this.obs = new MutationObserver(recs => this.feed(recs));
+      regions.forEach(r => this.obs.observe(r, { childList: true, subtree: true, characterData: true,
+        characterDataOldValue: true, attributes: true, attributeOldValue: true }));
+    },
+    stop() { if (!this.obs) return; this.commit(); this.obs.disconnect(); this.obs = null; },
+    feed(recs) {
+      if (this.applying) return;
+      const f = recs.filter(keepRec);
+      if (!f.length) return;
+      if (!this.cur) this.cur = { recs: [], selBefore: this.pending || saveSel() };
+      this.pending = null;
+      this.cur.recs.push(...f);
+      this.redo.length = 0;
+      clearTimeout(this.timer);
+      this.timer = setTimeout(() => this.commit(), 1000);
+    },
+    commit() {
+      if (this.obs) this.feed(this.obs.takeRecords());
+      clearTimeout(this.timer);
+      if (this.cur && this.cur.recs.length) {
+        this.cur.selAfter = saveSel();
+        this.undo.push(this.cur);
+        if (this.undo.length > 400) this.undo.shift();
+      }
+      this.cur = null; this.lastCls = null;
+    },
+    /* Cursor merken, bevor die nächste Änderung beginnt. */
+    note() { if (!this.cur) this.pending = saveSel(); },
+    /* Neue Rückgängig-Stufe, wenn sich die Art der Eingabe ändert. */
+    boundary(inputType) {
+      const cls = /^insertText|^insertCompositionText|^insertReplacementText/.test(inputType) ? 'ins'
+        : /^delete/.test(inputType) ? 'del' : 'other';
+      if (this.cur && (cls === 'other' || (this.lastCls && cls !== this.lastCls))) this.commit();
+      this.note();
+      this.lastCls = cls === 'other' ? null : cls;
+    },
+    apply(recs) {
+      this.applying = true;
+      for (let i = recs.length - 1; i >= 0; i--) {
+        const m = recs[i];
+        try {
+          if (m.type === 'characterData') m.target.data = m.oldValue;
+          else if (m.type === 'attributes') {
+            if (m.oldValue == null) m.target.removeAttribute(m.attributeName);
+            else m.target.setAttribute(m.attributeName, m.oldValue);
+          } else {
+            [...m.addedNodes].reverse().forEach(n => { if (n.parentNode === m.target) m.target.removeChild(n); });
+            const ref = (m.nextSibling && m.nextSibling.parentNode === m.target) ? m.nextSibling
+              : (m.previousSibling && m.previousSibling.parentNode === m.target) ? m.previousSibling.nextSibling : null;
+            [...m.removedNodes].forEach(n => m.target.insertBefore(n, ref));
+          }
+        } catch (e) { /* Knoten inzwischen anderweitig verschoben – überspringen */ }
+      }
+      const out = this.obs ? this.obs.takeRecords().filter(keepRec) : [];
+      this.applying = false;
+      return out;
+    }
+  };
+  function undo() {
+    UM.commit();
+    const tx = UM.undo.pop();
+    if (!tx) { toast('Nichts mehr rückgängig zu machen.'); return; }
+    const inv = UM.apply(tx.recs);
+    UM.redo.push({ recs: inv, selBefore: tx.selBefore, selAfter: tx.selAfter });
+    restoreSel(tx.selBefore);
+    hideSlash(); deselectImg();
+    setDirty(true);
+  }
+  function redo() {
+    UM.commit();
+    const tx = UM.redo.pop();
+    if (!tx) return;
+    const inv = UM.apply(tx.recs);
+    UM.undo.push({ recs: inv, selBefore: tx.selBefore, selAfter: tx.selAfter });
+    restoreSel(tx.selAfter);
+    hideSlash(); deselectImg();
+    setDirty(true);
+  }
+  /* Ein Umbau = genau eine Rückgängig-Stufe. */
+  function act(fn) {
+    UM.commit();
+    UM.pending = saveSel();
+    fn();
+    UM.commit();
+    setDirty(true);
+  }
+  onRegion('mousedown', () => { if (editing) UM.commit(); });
 
   if (location.hash === '#edit' || new URLSearchParams(location.search).get('edit') === '1') setEditing(true);
 })();
