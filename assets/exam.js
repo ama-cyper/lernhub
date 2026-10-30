@@ -135,6 +135,11 @@
     const resume = store.get(K_SESS, null);
     const grpOrder = [...new Set(CAT.sections.map(s => s.grp))];
     const vcount = s => s.items.filter(i => pref.versions === 'all' || !i.isVar).length;
+    // Altfragen = Originalnummern der Sammlung; wortgleiche Wiederholungen (z. B. „Frage 296 · 361“) sind EINE Fassung
+    const ocount = s => new Set(s.items.flatMap(i => nums(i.asked))).size;
+    const ccount = s => new Set(s.items.map(i => i.cid)).size;
+    const tileCount = s => pref.versions === 'all'
+      ? `${ocount(s)} Altfragen · ${vcount(s)} Fassungen` : `${ocount(s)} Altfragen · ${ccount(s)} Fragen`;
     const seg = (name, val, label) => `<button class="seg${String(pref[name]) === String(val) ? ' on' : ''}" data-pref="${name}" data-val="${val}">${label}</button>`;
     app.innerHTML = `
       <header class="ex-top"><a class="ex-back" href="${esc(back)}">← Katalog</a><span class="ex-brand">Prüfungsmodus</span><span></span></header>
@@ -158,13 +163,13 @@
               <div class="ex-tiles">${secs.map(s => `
                 <button class="tile${all.has(s.id) ? ' on' : ''}" data-sec="${esc(s.id)}" aria-pressed="${all.has(s.id)}">
                   <span class="tile-k">${esc(s.key)}</span><span class="tile-t">${esc(s.title)}</span>
-                  <span class="tile-c">${vcount(s)} ${pref.versions === 'all' ? 'Fassungen' : 'Fragen'}</span><span class="tile-ck" aria-hidden="true"></span></button>`).join('')}
+                  <span class="tile-c">${tileCount(s)}</span><span class="tile-ck" aria-hidden="true"></span></button>`).join('')}
               </div></div>`;
           }).join('')}
         </section>
         <section class="ex-card">
           <div class="ex-card-h"><h2>Einstellungen</h2></div>
-          <div class="ex-opt"><div class="ex-opt-l">Fassungen<small>Varianten = gleiche Frage aus anderen Jahrgängen, eigene Lösung</small></div>
+          <div class="ex-opt"><div class="ex-opt-l">Fassungen<small>Varianten = gleiche Frage mit anderem Wortlaut, eigene Lösung. Wortgleich wiederholte Altfragen werden einmal gefragt – daher weniger Fassungen als Altfragen.</small></div>
             <div class="segs">${seg('versions', 'all', 'Alle Fassungen')}${seg('versions', 'main', 'Nur Hauptfassung')}</div></div>
           <div class="ex-opt"><div class="ex-opt-l">Anzahl</div>
             <div class="segs">${seg('count', 10, '10')}${seg('count', 20, '20')}${seg('count', 40, '40')}${seg('count', 'all', 'Alle')}</div></div>
