@@ -348,7 +348,7 @@
     hideHoverOverlays();
     document.body.classList.toggle('lr-editing', v);
     regions.forEach(r => r.setAttribute('contenteditable', v ? 'true' : 'false'));
-    if (v) { repair(); UM.start(); } else { UM.stop(); hideMenu(); handle.style.display = 'none'; hoverBlock = null; }
+    if (v) { repair(); UM.start(); } else { UM.stop(); hideMenu(); handle.style.display = plusBtn.style.display = 'none'; hoverBlock = null; }
     toggleBtn.textContent = v ? 'Fertig' : 'Bearbeiten';
     toggleBtn.classList.toggle('on', v);
     syncBar(false);            // andere Beschriftung → Leiste kann umbrechen
@@ -1805,14 +1805,19 @@
      Am Handy/iPad erscheint der Griff an der Zeile mit dem Cursor und lässt
      sich mit dem Finger ziehen.                                               */
 
-  const handle = mark(el('<div id="lr-handle" title="Ziehen zum Verschieben · Tippen für Menü" aria-label="Zeile verschieben">⋮⋮</div>'));
+  /* Griff und Plus: Maße, Farben und Symbole 1:1 aus Notion übernommen
+     (Griff 18×24, Plus 24×24, Abstand zum Text 34 bzw. 58 px). */
+  const GRIP = '<svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M6.25 4a1.25 1.25 0 1 0 2.5 0 1.25 1.25 0 0 0-2.5 0m5 0a1.25 1.25 0 1 0 2.5 0 1.25 1.25 0 0 0-2.5 0m1.25 7.25a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5M6.25 10a1.25 1.25 0 1 0 2.5 0 1.25 1.25 0 0 0-2.5 0m6.25 7.25a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5M6.25 16a1.25 1.25 0 1 0 2.5 0 1.25 1.25 0 0 0-2.5 0"/></svg>';
+  const PLUS = '<svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M10 3.59a.66.66 0 0 1 .66.66v5.09h5.09a.66.66 0 0 1 0 1.32h-5.09v5.09a.66.66 0 0 1-1.32 0v-5.09H4.25a.66.66 0 0 1 0-1.32h5.09V4.25a.66.66 0 0 1 .66-.66"/></svg>';
+  const handle = mark(el('<div id="lr-handle" role="button" title="Ziehen zum Verschieben · Klicken für Menü" aria-label="Ziehen zum Verschieben, klicken für Menü">' + GRIP + '</div>'));
+  const plusBtn = mark(el('<div id="lr-plus" role="button" title="Klicken: Zeile darunter · Alt-Klick: darüber" aria-label="Zeile hinzufügen">' + PLUS + '</div>'));
   const dropLine = mark(el('<div id="lr-dropline"></div>'));
   const blockMenu = mark(el('<div id="lr-blockmenu" role="menu">' +
-    '<button data-m="dup">⧉ Duplizieren</button>' +
-    '<button data-m="up">↑ Nach oben <small>Strg+Umschalt+↑</small></button>' +
-    '<button data-m="down">↓ Nach unten <small>Strg+Umschalt+↓</small></button>' +
-    '<button data-m="del" class="lr-danger">🗑 Löschen</button></div>'));
-  document.body.append(handle, dropLine, blockMenu);
+    '<button data-m="del" class="lr-danger">Löschen <small>Entf</small></button>' +
+    '<button data-m="dup">Duplizieren <small>Strg+D</small></button>' +
+    '<button data-m="up">Nach oben <small>Strg+Umschalt+↑</small></button>' +
+    '<button data-m="down">Nach unten <small>Strg+Umschalt+↓</small></button></div>'));
+  document.body.append(plusBtn, handle, dropLine, blockMenu);
   let hoverBlock = null, drag = null, menuBlock = null;
 
   /* Elemente, deren Kinder einzeln verschiebbare Zeilen sind. */
@@ -1842,25 +1847,40 @@
   }
   const isList = n => !!n && /^(UL|OL)$/.test(n.tagName);
 
+  /* Erste Textzeile eines Blocks (für die senkrechte Ausrichtung des Griffs). */
+  function firstLineRect(b) {
+    const host = isDetails(b) ? sumOf(b) : b;
+    const w = document.createTreeWalker(host, NodeFilter.SHOW_TEXT, { acceptNode: t => t.data.trim() ? 1 : 3 });
+    const t = w.nextNode();
+    if (t) {
+      const r = document.createRange(); r.setStart(t, 0); r.setEnd(t, Math.min(1, t.data.length));
+      const rr = r.getClientRects()[0];
+      if (rr && rr.height) return rr;
+    }
+    const br = host.getBoundingClientRect();
+    const lh = parseFloat(getComputedStyle(host).lineHeight) || 24;
+    return { top: br.top + (parseFloat(getComputedStyle(host).paddingTop) || 0), height: Math.min(lh, br.height || lh) };
+  }
   function placeHandle(b) {
-    if (!b || !b.isConnected) { handle.style.display = 'none'; hoverBlock = null; return; }
+    if (!b || !b.isConnected) { handle.style.display = plusBtn.style.display = 'none'; hoverBlock = null; return; }
     hoverBlock = b;
     const r = b.getBoundingClientRect();
     const sum = isDetails(b) ? sumOf(b) : null;
     let left = r.left;
     if (sum) left = Math.min(left, sum.getBoundingClientRect().left);
-    if (b.tagName === 'LI') left -= 18;                       // links vom Aufzählungszeichen
-    const lh = parseFloat(getComputedStyle(sum || b).lineHeight) || 24;
-    const first = Math.min(r.height, lh + (sum ? 8 : 0));
-    handle.style.display = 'flex';
-    handle.style.top = Math.round(r.top + first / 2 - 12) + 'px';
-    handle.style.left = Math.max(2, Math.round(left - 26)) + 'px';
+    if (b.tagName === 'LI') left -= 22;                       // links vom Aufzählungszeichen
+    const fl = firstLineRect(b);
+    const top = Math.round(fl.top + fl.height / 2 - 12);
+    handle.style.display = plusBtn.style.display = 'flex';
+    handle.style.top = plusBtn.style.top = top + 'px';
+    handle.style.left = Math.max(26, Math.round(left - 34)) + 'px';
+    plusBtn.style.left = Math.max(2, Math.round(left - 58)) + 'px';
   }
-  function hideHandle() { if (!drag) { handle.style.display = 'none'; hoverBlock = null; } }
+  function hideHandle() { if (!drag) { handle.style.display = plusBtn.style.display = 'none'; hoverBlock = null; } }
 
   document.addEventListener('mousemove', e => {
     if (!editing || drag || e.buttons) return;
-    if (e.target === handle || blockMenu.contains(e.target)) return;
+    if (handle.contains(e.target) || plusBtn.contains(e.target) || blockMenu.contains(e.target)) return;
     let t = e.target;
     // Maus im linken Rand neben einer Zeile: die Zeile auf derselben Höhe nehmen.
     if (!inRegion(t)) {
@@ -1883,29 +1903,52 @@
   window.addEventListener('scroll', () => { if (!drag && hoverBlock) placeHandle(hoverBlock); hideMenu(); }, true);
 
   /* ---------- Ziehen ---------- */
+  /* Das Ziehen läuft über window-weite Listener. Vorher hingen sie am Griff
+     selbst (Pointer-Capture) — sobald der Griff während des Ziehens
+     verschwand, kam das Loslassen nie an und alles blieb hängen. */
   handle.addEventListener('pointerdown', e => {
     if (!editing || !hoverBlock || e.button > 0) return;
     e.preventDefault();
     hideMenu();
-    try { handle.setPointerCapture(e.pointerId); } catch (_) {}
-    drag = { block: hoverBlock, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, moved: false, target: null, ghost: null, raf: 0 };
+    drag = { block: hoverBlock, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY,
+      moved: false, target: null, ghost: null, raf: 0, id: e.pointerId, type: e.pointerType };
   });
-  handle.addEventListener('pointermove', e => {
-    if (!drag) return;
+  window.addEventListener('pointermove', e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    // Loslassen außerhalb des Fensters verpasst? Maus ohne Taste = fertig.
+    if (drag.type === 'mouse' && e.buttons === 0) { endPointer(true); return; }
     drag.x = e.clientX; drag.y = e.clientY;
     if (!drag.moved && Math.hypot(drag.x - drag.x0, drag.y - drag.y0) < 4) return;
+    e.preventDefault();
     if (!drag.moved) startDrag();
     moveGhost();
     computeDrop();
-  });
-  handle.addEventListener('pointerup', e => {
+  }, { passive: false });
+  function endPointer(commit) {
     if (!drag) return;
-    try { handle.releasePointerCapture(e.pointerId); } catch (_) {}
-    if (!drag.moved) { const b = drag.block; drag = null; openMenu(b); return; }
-    finishDrag(true);
+    if (!drag.moved) { const b = drag.block; drag = null; if (commit) openMenu(b); return; }
+    finishDrag(commit);
+  }
+  window.addEventListener('pointerup', e => { if (drag && e.pointerId === drag.id) endPointer(true); });
+  window.addEventListener('pointercancel', e => { if (drag && e.pointerId === drag.id) endPointer(false); });
+  window.addEventListener('blur', () => endPointer(false));
+  document.addEventListener('keydown', e => { if (drag && e.key === 'Escape') { e.preventDefault(); endPointer(false); } }, true);
+
+  /* Plus: neue Zeile darunter (Alt-Klick: darüber) mit geöffnetem /-Menü. */
+  plusBtn.addEventListener('mousedown', e => e.preventDefault());
+  plusBtn.addEventListener('click', e => {
+    if (!editing || !hoverBlock) return;
+    const b = hoverBlock, above = e.altKey;
+    act(() => {
+      const p = b.tagName === 'LI' ? document.createElement('li') : document.createElement('p');
+      p.textContent = '/';
+      if (above) b.before(p); else b.after(p);
+      focusRegion();
+      const r = document.createRange(); r.setStart(p.firstChild, 1); r.collapse(true);
+      const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    });
+    onType();
   });
-  handle.addEventListener('pointercancel', () => { if (drag) finishDrag(false); });
-  document.addEventListener('keydown', e => { if (drag && e.key === 'Escape') { e.preventDefault(); finishDrag(false); } }, true);
 
   function startDrag() {
     drag.moved = true;
@@ -1913,21 +1956,24 @@
     window.getSelection().removeAllRanges();
     const b = drag.block, r = b.getBoundingClientRect();
     const g = mark(b.cloneNode(true));
-    g.removeAttribute('id');
     g.id = 'lr-ghost';
+    g.classList.remove('lr-blocksel');
     g.querySelectorAll('[id]').forEach(n => n.removeAttribute('id'));
     if (isDetails(g)) g.open = false;
     g.style.width = r.width + 'px';
-    document.body.appendChild(g);
-    drag.ghost = g; drag.dx = drag.x0 - r.left; drag.dy = Math.min(drag.y0 - r.top, 20);
+    // Im selben Bereich einhängen, damit die Report-Optik (.wrap p …) greift.
+    const host = regions.find(rg => rg.contains(b)) || document.body;
+    (b.tagName === 'LI' ? b.parentElement : host).appendChild(g);
+    drag.ghost = g;
     b.classList.add('lr-dragging');
     document.body.classList.add('lr-is-dragging');
     autoScroll();
   }
   function moveGhost() {
     const g = drag.ghost; if (!g) return;
-    g.style.left = (drag.x - drag.dx + 30) + 'px';
-    g.style.top = (drag.y - drag.dy + 14) + 'px';
+    // wie Notion: blasse Kopie rechts neben dem Mauszeiger
+    g.style.left = (drag.x + 18) + 'px';
+    g.style.top = (drag.y - 14) + 'px';
   }
   function autoScroll() {
     if (!drag || !drag.moved) return;
@@ -1956,6 +2002,15 @@
       }
       if (!tgt) {
         let b = dragBlockOf(t);
+        // Zwischenraum zwischen Zeilen / unter der letzten Zeile: nächste Zeile nehmen,
+        // damit die Linie nie flackert und Loslassen immer etwas bewirkt.
+        if (!b || isContainer(t)) {
+          const cont = isContainer(t) ? t : (regions.find(r => r.contains(t)) || region);
+          const nk = nearestKid(cont, y);
+          if (nk) b = nk;
+          else if (isDetails(cont)) b = cont;
+          else if (isDetails(cont.parentElement) && bodyOf(cont.parentElement) === cont) b = cont.parentElement;
+        }
         if (b && (b === drag.block || drag.block.contains(b))) b = drag.block;
         if (b) {
           // Absätze nicht zwischen Listenpunkte, Listenpunkte nicht zwischen Absätze
@@ -1982,6 +2037,19 @@
     }
     drag.target = tgt;
     showDropLine(tgt);
+  }
+  function nearestKid(cont, y) {
+    const list = (isDetails(cont) ? kidsOf(cont) : [...cont.children])
+      .filter(k => k.nodeType === 1 && !k.hasAttribute('data-lr-ui') && k.tagName !== 'SUMMARY' && /^(?!SCRIPT|STYLE)/.test(k.tagName));
+    let best = null, bd = Infinity;
+    list.forEach(k => {
+      const r = k.getBoundingClientRect(); if (!r.height) return;
+      const dd = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0;
+      if (dd < bd) { bd = dd; best = k; }
+    });
+    // Abschnitts-Hüllen (section, div ohne Klasse) sind keine Zeilen: tiefer suchen.
+    if (best && isContainer(best) && !isDetails(best) && !isList(best)) return nearestKid(best, y) || best;
+    return best;
   }
   function showDropLine(t) {
     if (!t || t.where === 'none') { dropLine.style.display = 'none'; return; }
@@ -2020,6 +2088,7 @@
     if (b.tagName === 'LI' && !intoList) {
       // Listenpunkt landet außerhalb einer Liste → eigene Liste gleicher Art
       node = document.createElement(oldParent.tagName.toLowerCase());
+      if (oldParent.className) node.className = oldParent.className;
       node.appendChild(b);
     }
     if (t.where === 'into') {
@@ -2042,7 +2111,8 @@
     if (!isList(n)) return;
     const prev = n.previousElementSibling, next = n.nextElementSibling;
     if (isList(prev) && prev.tagName === n.tagName && prev.className === n.className) { while (n.firstChild) prev.appendChild(n.firstChild); n.remove(); n = prev; }
-    if (isList(next) && next.tagName === n.tagName && next.className === n.className) { while (next.firstChild) n.appendChild(next.firstChild); next.remove(); }
+    // in die bestehende Liste einfügen (behält deren id/Klasse für Sprungmarken)
+    if (isList(next) && next.tagName === n.tagName && next.className === n.className) { while (n.lastChild) next.insertBefore(n.lastChild, next.firstChild); n.remove(); }
   }
 
   /* ---------- Menü am Griff ---------- */
@@ -2083,7 +2153,17 @@
     else if (m === 'up' || m === 'down') { placeCaret(isDetails(b) ? sumOf(b) : b, true); stepBlock(m === 'up' ? -1 : 1); }
   });
   document.addEventListener('mousedown', e => { if (!blockMenu.contains(e.target) && e.target !== handle) hideMenu(); }, true);
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && blockMenu.style.display === 'block') { e.preventDefault(); hideMenu(); } }, true);
+  document.addEventListener('keydown', e => {
+    if (blockMenu.style.display === 'block') {
+      if (e.key === 'Escape') { e.preventDefault(); hideMenu(); return; }
+      if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); e.stopPropagation(); blockMenu.querySelector('[data-m=del]').click(); return; }
+    }
+    // Strg+D / ⌘D: Zeile mit dem Cursor duplizieren (wie Notion)
+    if (editing && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key || '').toLowerCase() === 'd' && inRegion(e.target)) {
+      const c = caret(); const b = c && dragBlockOf(c.r.startContainer);
+      if (b) { e.preventDefault(); menuBlock = b; blockMenu.querySelector('[data-m=dup]').click(); menuBlock = null; }
+    }
+  }, true);
 
   /* ---------- Strg+Umschalt+↑/↓: Zeile verschieben ---------- */
   function stepBlock(dir) {
