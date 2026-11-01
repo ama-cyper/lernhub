@@ -385,3 +385,7 @@ body.lr-is-dragging #lr-handle, body.lr-is-dragging #lr-plus{opacity:0;}
 
 /* Report-eigene Großansicht nie zusätzlich zur Editor-Lightbox zeigen. */
 body.lr-has-bar #zoom{display:none !important;}
+
+/* Bild, das nur als vorläufiger Link gespeichert war */
+img[data-lh-missing]{display:block !important;width:min(100%,420px) !important;height:96px !important;margin:12px auto 0 !important;border:2px dashed #c23b3b !important;border-radius:10px;background:repeating-linear-gradient(135deg,rgba(194,59,59,.07) 0 10px,transparent 10px 20px) !important;box-shadow:none !important}
+.lh-missing{max-width:420px;margin:6px auto 14px;text-align:center;font:600 13px/1.4 system-ui,-apple-system,sans-serif;color:#c23b3b}

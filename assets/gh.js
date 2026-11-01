@@ -154,6 +154,7 @@
   /* ---------- Bilder: lazy aus dem privaten Repo laden ---------- */
   const PIXEL = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
   const imgCache = new Map();
+  const ownBlobs = new Map();   // Sitzungs-Link → Pfad im Repo (für Kopien geladener Bilder)
   async function imageURL(path) {
     if (imgCache.has(path)) return imgCache.get(path);
     const p = (async () => {
@@ -164,7 +165,9 @@
         // Bildnamen sind Inhalts-Prüfsummen — einmal geladen, nie wieder ändernd.
         if (cache && /\/img\/[0-9a-f]{16}\./.test(path)) { try { await cache.put(APP + '__img/' + path, new Response(blob)); } catch (e) {} }
       }
-      return URL.createObjectURL(blob);
+      const u = URL.createObjectURL(blob);
+      ownBlobs.set(u, path.replace(/^lectures\//, ''));
+      return u;
     })();
     imgCache.set(path, p);
     p.catch(() => imgCache.delete(path));
@@ -194,10 +197,58 @@
   }
   const loadAllImages = () => Promise.all([...document.querySelectorAll('img[data-gh-src]')].map(loadImg));
 
-  /* Relative Bildpfade im Report-HTML auf das private Repo umbiegen. */
+  /* Relative Bildpfade im Report-HTML auf das private Repo umbiegen.
+     Der Tag wird attributweise gelesen: Beschreibungen (alt) dürfen „>“ oder
+     <b> enthalten, ohne dass das Bild auf der öffentlichen Seite gesucht wird.
+     Bilder, die nur als Sitzungs-Link (blob:) gespeichert wurden, sind nach dem
+     Neuladen verloren — sie werden sichtbar als „fehlt“ markiert. */
+  const IMG_TAG = /<img\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+  const SRC_ATTR = /(\s)src\s*=\s*(["'])([^"']*)\2/i;
   function prepareImages(html) {
-    return html.replace(/(<img\b[^>]*?\s)src=(["'])(?!https?:|data:|blob:|\/\/|\/)([^"']+)\2/gi,
-      (m, pre, q, src) => `${pre}src=${q}${PIXEL}${q} data-gh-src=${q}${src}${q}`);
+    return html.replace(IMG_TAG, tag => {
+      const m = tag.match(SRC_ATTR);
+      if (!m || /\sdata-gh-src\s*=/i.test(tag)) return tag;
+      const src = m[3];
+      if (/^blob:/i.test(src)) return tag.replace(SRC_ATTR, `$1src=$2${PIXEL}$2 data-lh-missing="1"`);
+      if (!src || /^(https?:|data:|\/\/|\/|#)/i.test(src)) return tag;
+      return tag.replace(SRC_ATTR, `$1src=$2${PIXEL}$2 data-gh-src=$2${src}$2`);
+    });
+  }
+
+  /* Eingefügtes Bild (Sitzungs-Link blob: oder eingebettet data:) als eigene
+     Datei ins private Repo legen und mit dem echten Pfad verknüpfen.
+     Der Sitzungs-Link funktioniert nur, solange die Seite offen ist — deshalb
+     direkt beim Einfügen und spätestens beim Speichern. */
+  const IMG_EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/svg+xml': 'svg', 'image/avif': 'avif', 'image/heic': 'heic' };
+  async function adoptImage(img) {
+    if (!img || img.hasAttribute('data-gh-src') || img.hasAttribute('data-lh-missing')) return false;
+    const src = img.getAttribute('src') || '';
+    if (!/^(blob|data):/i.test(src) || src === PIXEL) return false;
+    if (ownBlobs.has(src)) { img.setAttribute('data-gh-src', ownBlobs.get(src)); return true; }
+    if (img._lhAdopt) return img._lhAdopt;
+    img._lhAdopt = (async () => {
+      let blob;
+      try { blob = await (await fetch(src)).blob(); }
+      catch (e) {
+        if (/^blob:/i.test(src)) { img.setAttribute('src', PIXEL); img.setAttribute('data-lh-missing', '1'); }
+        return false;
+      }
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      const ext = IMG_EXT[(blob.type || '').toLowerCase()] || 'png';
+      const rel = await hashName(bytes, ext);
+      await putImage('lectures/' + rel, b64FromBytes(bytes));
+      img.setAttribute('data-gh-src', rel);
+      return true;
+    })();
+    img._lhAdopt.finally(() => { img._lhAdopt = null; });
+    return img._lhAdopt;
+  }
+  async function adoptImages(root) {
+    const imgs = [...(root || document).querySelectorAll('img[src^="blob:"]:not([data-gh-src]), img[src^="data:"]:not([data-gh-src]):not([data-lh-missing])')]
+      .filter(i => i.getAttribute('src') !== PIXEL && !i.closest('[data-lr-ui]'));
+    let n = 0;
+    for (const i of imgs) if (await adoptImage(i)) n++;
+    return n;
   }
 
   /* Eingebettete Bilder (data:) aus einem Report herauslösen → eigene Dateien. */
@@ -255,7 +306,7 @@
     CFG, APP, PIXEL, GHError,
     token: () => store.get(KEY), login, logout, verify,
     tree, readText, readJSON, putText, putImage, del, updateJSON, commitFiles,
-    imageURL, hydrateImages, prefetchImages, loadAllImages, prepareImages, extractImages, hashName, gitSha,
+    imageURL, hydrateImages, prefetchImages, loadAllImages, prepareImages, extractImages, adoptImage, adoptImages, hashName, gitSha,
     b64FromBytes, b64FromText, drafts,
     repoURL: `https://github.com/${CFG.owner}/${CFG.repo}`
   };

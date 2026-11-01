@@ -109,9 +109,26 @@
 
   /* ================= Zustand ================= */
   let CAT = null;
-  let pref = Object.assign({ secs: null, versions: 'all', count: 20, order: 'mix', hot: false, wrong: false, free: true }, store.get(K_PREF, {}));
+  let pref = Object.assign({ secs: null, versions: 'all', count: 20, order: 'mix', hot: false, wrong: false, err: false, free: true }, store.get(K_PREF, {}));
   let stats = store.get(K_STATS, {});
   let sess = null;   // { ids, idx, res: {id: {sel:[], ok:bool|null, part}} , checked:{} }
+  /* Feature 2: Verdrahtung mit den Lernreports + geräteübergreifendes Fehlerlog
+     (nur in Ordnern, für die assets/links.js es freischaltet). */
+  let LINKS = null;
+  const ERR = window.LHLinks ? LHLinks.errlog : null;
+  const inErr = cid => !!(ERR && LINKS && ERR.inLog(file, cid));
+  function readHtml(it, emph) {
+    if (!LINKS) return '';
+    const { spots, reports } = LINKS.forCard(it.cid);
+    if (!spots.length && !reports.length) return '';
+    const items = spots.map(s => `<a class="rd-link" href="${esc(LINKS.reportURL(s.f, s.a))}"><span class="rd-k">${esc(s.rep.label || 'Report')}</span><span class="rd-t">${esc(s.h || s.rep.title)}</span><span class="rd-go" aria-hidden="true">→</span></a>`)
+      .concat(reports.map(r => `<a class="rd-link soft" href="${esc(LINKS.reportURL(r.f))}"><span class="rd-k">${esc(r.label || 'Report')}</span><span class="rd-t">${esc(r.title)}<small>kein Abschnitt markiert – Report zum Thema</small></span><span class="rd-go" aria-hidden="true">→</span></a>`));
+    return `<div class="rd${emph ? ' emph' : ''}"><div class="rd-h">${emph ? 'Falsch? Hier steht die Erklärung' : 'Im Lernreport nachlesen'}</div>${items.join('')}</div>`;
+  }
+  function errMeta(cid) {
+    const e = ERR && ERR.entry(file, cid);
+    return e ? `${e.w}× falsch${e.s ? ' · ' + e.s + '× richtig seitdem' : ''}` : '';
+  }
 
   const byId = id => CAT.items.find(i => i.id === id);
   function pool() {
@@ -120,7 +137,8 @@
       && (pref.versions === 'all' || !i.isVar)
       && (!pref.hot || i.n >= 2)
       && (pref.free || i.type !== 'free')
-      && (!pref.wrong || (stats[i.id] && stats[i.id].last === 0)));
+      && (!pref.wrong || (stats[i.id] && stats[i.id].last === 0))
+      && (!pref.err || !LINKS || inErr(i.cid)));
   }
   const savePref = () => store.set(K_PREF, pref);
   const saveSess = () => sess ? store.set(K_SESS, sess) : store.del(K_SESS);
@@ -131,6 +149,22 @@
     const all = new Set(pref.secs || CAT.sections.map(s => s.id));
     const p = pool();
     const wrongCount = CAT.items.filter(i => stats[i.id] && stats[i.id].last === 0).length;
+    const errList = (ERR && LINKS) ? ERR.list(file).filter(e => LINKS.cards[e.cid] && CAT.items.some(i => i.cid === e.cid)) : [];
+    const errN = errList.length;
+    if (LINKS && !errN && pref.err) pref.err = false;
+    function errCard() {
+      if (!LINKS) return '';
+      if (!errN) return `<section class="ex-card err-card empty"><div class="ex-card-h"><h2>Fehlerlog</h2></div>
+        <p class="err-empty">Noch leer. Jede falsch beantwortete Frage landet hier – mit Link zur Stelle im Lernreport – und bleibt, bis du sie zweimal hintereinander richtig hast.</p></section>`;
+      const show = errList.slice(0, 6);
+      return `<section class="ex-card err-card"><div class="ex-card-h"><h2>Fehlerlog · ${errN} ${errN === 1 ? 'Frage' : 'Fragen'}</h2></div>
+        <div class="err-list">${show.map(e => { const c = LINKS.cards[e.cid]; const loc = LINKS.forCard(e.cid); const s = loc.spots[0]; const r = loc.reports[0];
+          const href = s ? LINKS.reportURL(s.f, s.a) : r ? LINKS.reportURL(r.f) : null;
+          return `<div class="err-row"><span class="chip key">${esc(c.sec)}</span><div class="err-main"><span class="err-s">${esc(c.stem || e.cid)}</span>
+            <span class="err-m">${esc(errMeta(e.cid))}${href ? ` · <a href="${esc(href)}">${esc(s ? (s.rep.label + ' · ' + (s.h || '')) : (r.label + ' · Report'))}</a>` : ''}</span></div></div>`; }).join('')}
+          ${errN > show.length ? `<p class="err-more">+ ${errN - show.length} weitere</p>` : ''}</div>
+        <button class="btn primary" id="errGo">Fehlerlog abfragen · ${errN}</button></section>`;
+    }
     const count = pref.count === 'all' ? p.length : Math.min(pref.count, p.length);
     const resume = store.get(K_SESS, null);
     const grpOrder = [...new Set(CAT.sections.map(s => s.grp))];
@@ -152,6 +186,7 @@
         ${resume && resume.ids && resume.idx < resume.ids.length ? `
         <div class="ex-resume"><div><b>Laufende Prüfung</b><span>Frage ${resume.idx + 1} von ${resume.ids.length}</span></div>
           <div class="ex-resume-b"><button class="btn ghost" id="dropSess">Verwerfen</button><button class="btn primary" id="resumeSess">Fortsetzen</button></div></div>` : ''}
+        ${errCard()}
         <section class="ex-card">
           <div class="ex-card-h"><h2>Themen</h2>
             <div class="ex-mini"><button class="linkbtn" id="selAll">Alle</button><span>·</span><button class="linkbtn" id="selNone">Keine</button></div></div>
@@ -179,6 +214,8 @@
           <label class="ex-sw"><input type="checkbox" data-chk="free" ${pref.free ? 'checked' : ''}><span class="sw"></span><span>Freitext- &amp; Abbildungsfragen einbeziehen</span></label>
           <label class="ex-sw${wrongCount ? '' : ' dis'}"><input type="checkbox" data-chk="wrong" ${pref.wrong ? 'checked' : ''} ${wrongCount ? '' : 'disabled'}><span class="sw"></span>
             <span>Nur zuletzt falsch beantwortete <em>(${wrongCount})</em></span></label>
+          ${LINKS ? `<label class="ex-sw${errN ? '' : ' dis'}"><input type="checkbox" data-chk="err" ${pref.err ? 'checked' : ''} ${errN ? '' : 'disabled'}><span class="sw"></span>
+            <span>Nur Fehlerlog <em>(${errN})</em><small class="sw-sub">auf allen Geräten gleich</small></span></label>` : ''}
         </section>
         <div class="ex-start">
           <button class="btn primary big" id="start" ${count ? '' : 'disabled'}>${count ? `Prüfung starten · ${count} ${count === 1 ? 'Frage' : 'Fragen'}` : 'Keine Fragen ausgewählt'}</button>
@@ -198,6 +235,10 @@
       else if (t.id === 'selNone') pref.secs = [];
       else if (t.dataset.pref) { const v = t.dataset.val; pref[t.dataset.pref] = /^\d+$/.test(v) ? +v : v; }
       else if (t.id === 'start') return start(pool());
+      else if (t.id === 'errGo') {
+        const ids = new Set(errList.map(e => e.cid));
+        return start(shuffle(CAT.items.filter(i => ids.has(i.cid) && (pref.versions === 'all' || !i.isVar))), true);
+      }
       else if (t.id === 'resumeSess') { sess = resume; return renderQ(); }
       else if (t.id === 'dropSess') { store.del(K_SESS); }
       else return;
@@ -286,6 +327,7 @@
     const s = stats[it.id] || { r: 0, w: 0 };
     ok ? s.r++ : s.w++; s.last = ok ? 1 : 0; s.t = Date.now();
     stats[it.id] = s; store.set(K_STATS, stats);
+    if (ERR && LINKS) ERR.record(file, it.cid, ok);
   }
 
   function paint(it, r) {
@@ -310,7 +352,7 @@
       const keyLine = it.type === 'mc' ? `<div class="ex-key"><span class="k">Richtig</span><b>${want.join(', ')}</b>${it.asked ? `<span class="src">${esc(it.asked)}</span>` : ''}</div>`
         : it.type === 'none' ? `<div class="ex-key"><span class="k">Richtig</span><b>Keine der Antworten</b>${it.asked ? `<span class="src">${esc(it.asked)}</span>` : ''}</div>`
         : `<div class="ex-key"><span class="k">Lösung</span><b>${esc(it.free || 'siehe Begründung')}</b>${it.asked ? `<span class="src">${esc(it.asked)}</span>` : ''}</div>`;
-      sol.innerHTML = keyLine + `<div class="ex-explain">${it.explain}</div>`;
+      sol.innerHTML = keyLine + `<div class="ex-explain">${it.explain}</div>` + readHtml(it, r.ok === false);
       if (it.type === 'free') {
         v.hidden = r.ok === null;
         if (r.ok !== null) { v.className = 'ex-verdict ' + (r.ok ? 'good' : 'bad'); v.textContent = r.ok ? '✓ Gewusst' : '✗ Nicht gewusst'; }
@@ -347,6 +389,7 @@
     }).filter(x => x.n);
     const tone = pct >= 80 ? 'good' : pct >= 60 ? 'part' : 'bad';
     store.del(K_SESS);
+    if (ERR) ERR.flush();
     app.innerHTML = `
       <header class="ex-top"><a class="ex-back" href="${esc(back)}">← Katalog</a><span class="ex-brand">Auswertung</span><span></span></header>
       <main class="ex-wrap">
@@ -362,7 +405,7 @@
           ${wrong.map(i => { const r = sess.res[i.id]; return `<details class="rev"><summary><span class="chip key">${esc(i.secKey)}</span><span class="rev-s">${esc(txt(i.stem))}</span></summary>
             <div class="rev-b">${i.type === 'free' ? '' : `<p><span class="k">Deine Wahl</span> ${r.sel.length ? r.sel.join(', ') : '—'} &nbsp; <span class="k">Richtig</span> <b>${i.type === 'none' ? 'keine' : i.correct.join(', ')}</b></p>`}
             ${i.opts && i.opts.length ? `<ol class="rev-opts">${i.opts.map(o => `<li class="${(i.type === 'mc' && i.correct.includes(o.letter)) ? 'c' : r.sel.includes(o.letter) ? 'w' : ''}"><b>${o.letter})</b> ${o.html}</li>`).join('')}</ol>` : ''}
-            <div class="ex-explain">${i.explain}</div></div></details>`; }).join('')}</section>` : ''}
+            <div class="ex-explain">${i.explain}</div>${readHtml(i, true)}</div></details>`; }).join('')}</section>` : ''}
         <div class="ex-start row">
           ${wrong.length ? `<button class="btn primary big" id="redo">Falsche wiederholen (${wrong.length})</button>` : ''}
           <button class="btn ${wrong.length ? 'ghost' : 'primary'} big" id="again">Neue Prüfung</button>
@@ -400,6 +443,13 @@
     document.title = 'Prüfung · ' + CAT.title;
     window.LH_EXAM = CAT;   // für Kontrolle in der Konsole
     renderSetup();
+    if (window.LHLinks) {
+      Promise.all([LHLinks.forFile(file), ERR.load()]).then(([idx]) => {
+        if (!idx || !idx.catalog) return;
+        LINKS = idx;
+        if (!sess) { const y = scrollY; renderSetup(); scrollTo(0, y); }
+      }).catch(e => console.warn('Verdrahtung nicht verfügbar:', e));
+    }
     LH.hydrateImages(document);
     new MutationObserver(() => LH.hydrateImages(document)).observe(app, { childList: true });
   })();

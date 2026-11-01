@@ -354,6 +354,7 @@
     syncBar(false);            // andere Beschriftung → Leiste kann umbrechen
     if (!v) { hideSlash(); pop.style.display = 'none'; deselectImg(); if (dirty) save(); }
     else region.focus({ preventScroll: true });
+    if (typeof F2 !== 'undefined') { if (v) F2.unmount(); else F2.mount(); }
   }
   toggleBtn.addEventListener('click', () => setEditing(!editing));
   onRegion('input', () => { setDirty(true); onType(); });
@@ -680,8 +681,7 @@
   }
 
   /* ================= Bild-Upload ================= */
-  fileInput.addEventListener('change', async () => {
-    const f = fileInput.files[0]; fileInput.value = ''; if (!f) return;
+  async function insertImageFile(f) {
     statusEl.textContent = 'Lade Bild …';
     try {
       const bytes = new Uint8Array(await f.arrayBuffer());
@@ -692,7 +692,40 @@
       ins('<img class="lr-img a-center" src="' + url + '" data-gh-src="' + rel + '" alt=""><p><br></p>');
       statusEl.textContent = dirty ? 'Nicht gespeichert' : 'Gespeichert';
     } catch (err) { statusEl.textContent = 'Upload-Fehler: ' + (err.message || ''); }
+  }
+  fileInput.addEventListener('change', async () => {
+    const f = fileInput.files[0]; fileInput.value = ''; if (!f) return;
+    insertImageFile(f);
   });
+  /* Eingefügte Bilder sofort ins private Repo legen. Ohne das landet im Report
+     nur ein Sitzungs-Link (blob:), der nach dem Neuladen ins Leere zeigt —
+     typisch beim Einfügen aus der Zwischenablage am iPad.                   */
+  async function adoptPasted() {
+    try {
+      const n = await LH.adoptImages(region.ownerDocument);
+      if (n) { LH.hydrateImages(document); setDirty(true); }
+    } catch (err) { statusEl.textContent = 'Bild-Upload-Fehler: ' + (err.message || ''); }
+  }
+  onRegion('paste', e => {
+    if (!editing || !e.clipboardData) return;
+    const files = [...(e.clipboardData.files || [])].filter(f => /^image\//.test(f.type));
+    const html = e.clipboardData.getData('text/html') || '';
+    if (files.length && !/<img\b/i.test(html)) {
+      e.preventDefault(); e.stopImmediatePropagation();
+      files.reduce((p, f) => p.then(() => insertImageFile(f)), Promise.resolve());
+      return;
+    }
+    setTimeout(adoptPasted, 50);
+  }, true);
+  onRegion('drop', e => {
+    if (!editing || selImg || !e.dataTransfer) return;
+    const files = [...(e.dataTransfer.files || [])].filter(f => /^image\//.test(f.type));
+    if (!files.length) { setTimeout(adoptPasted, 50); return; }
+    e.preventDefault();
+    const pos = document.caretRangeFromPoint && document.caretRangeFromPoint(e.clientX, e.clientY);
+    if (pos) { const s = window.getSelection(); s.removeAllRanges(); s.addRange(pos); }
+    files.reduce((p, f) => p.then(() => insertImageFile(f)), Promise.resolve());
+  }, true);
 
   /* ================= Bild auswählen / ausrichten / skalieren / verschieben ================= */
   function selectImg(img) {
@@ -784,10 +817,16 @@
     // Markierung der verschobenen Sticky-Leisten gehört nicht in die Datei.
     clone.querySelectorAll('[' + STICK + ']').forEach(n => n.removeAttribute(STICK));
     clone.querySelectorAll('[contenteditable]').forEach(n => n.removeAttribute('contenteditable'));
-    clone.querySelectorAll('.lr-sel, .lr-dragging, .lr-blocksel').forEach(n => n.classList.remove('lr-sel', 'lr-dragging', 'lr-blocksel'));
+    clone.querySelectorAll('.lr-sel, .lr-dragging, .lr-blocksel, .lh-flash, .lh-aq').forEach(n => n.classList.remove('lr-sel', 'lr-dragging', 'lr-blocksel', 'lh-flash', 'lh-aq'));
     clone.querySelectorAll('img[draggable]').forEach(n => n.removeAttribute('draggable'));
     // Bilder aus dem privaten Repo: wieder den echten, relativen Pfad eintragen.
     clone.querySelectorAll('img[data-gh-src]').forEach(n => { n.setAttribute('src', n.getAttribute('data-gh-src')); n.removeAttribute('data-gh-src'); });
+    // Bild-Zoom, den das Report-Skript bei jedem Öffnen neu anlegt, nicht mitspeichern —
+    // sonst sammeln sich mit jedem Speichern leere Zoom-Ebenen samt toter Bild-Links an.
+    if ([...clone.querySelectorAll('script:not([src])')].some(s => /\.id\s*=\s*["']zoom["']/.test(s.textContent)))
+      clone.querySelectorAll('body > #zoom').forEach(n => n.remove());
+    // Sitzungs-Links (blob:) überleben kein Neuladen — nie so speichern.
+    clone.querySelectorAll('img[src^="blob:"]').forEach(n => { n.setAttribute('src', LH.PIXEL); n.setAttribute('data-lh-missing', '1'); });
     // Laufzeit-Reste der Toggle-Animation dürfen nie in der Datei landen.
     clone.querySelectorAll('.lr-animating').forEach(n => {
       n.classList.remove('lr-animating');
@@ -807,6 +846,14 @@
     clearTimeout(autosaveTimer);
     saving = true;
     const myRev = rev;
+    try {
+      const pending = document.querySelectorAll('img[src^="blob:"]:not([data-gh-src]), img[src^="data:"]:not([data-gh-src]):not([data-lh-missing])').length;
+      if (pending) { statusEl.textContent = 'Lade Bilder hoch …'; await LH.adoptImages(document); }
+    } catch (err) {
+      saving = false;
+      statusEl.textContent = 'Bild-Upload-Fehler: ' + (err.message || '') + ' — nicht gespeichert';
+      writeDraft(); return;
+    }
     const content = cleanDoc();
     writeDraft(content);
     statusEl.textContent = 'Speichere …';
@@ -861,6 +908,130 @@
       ['Wiederherstellen', () => { const u = new URL(location.href); u.searchParams.set('draft', '1'); location.href = u.href; }, true]
     ]);
   }, 0);
+  /* ================= Feature 2: Altfragen ↔ Lernreport =================
+     Katalog: unter jeder Lösung „Im Lernreport nachlesen“ (genauer Abschnitt,
+     abgeleitet aus deinen Altfrage-Chips im Report) und „Falsch gehabt /
+     Gewusst“ fürs geräteübergreifende Fehlerlog.
+     Report: Altfrage-Chips springen zur Frage im Katalog.
+     Alles nur Bedienelemente (data-lr-ui) — wird nie in die Datei gespeichert
+     und beim Bearbeiten ausgeblendet.                                        */
+  var F2 = (function () {
+    if (!window.LHLinks || !DOC.file) return { mount() {}, unmount() {} };
+    const isCatalog = !!document.querySelector('article.card details.sol');
+    const ERR = LHLinks.errlog;
+    let idx = null, mounted = false;
+    const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const css = mark(el('<style>' +
+      '.lh-rd{margin:14px 0 6px;padding:12px;border-radius:12px;border:1px solid rgba(127,127,127,.28);background:rgba(127,127,127,.06);display:grid;gap:8px;font-size:15px}' +
+      '.lh-rd-h{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;opacity:.7}' +
+      '.lh-rd a.lh-go{display:flex;gap:10px;align-items:baseline;padding:9px 11px;border-radius:9px;background:rgba(127,127,127,.08);color:inherit;text-decoration:none;border:1px solid transparent}' +
+      '.lh-rd a.lh-go:hover{border-color:currentColor}' +
+      '.lh-rd a.lh-go b{flex:none;font-size:12px;padding:1px 7px;border-radius:6px;background:#2f5d50;color:#fff}' +
+      '.lh-rd a.lh-go small{display:block;opacity:.65;font-size:12.5px}' +
+      '.lh-rd-b{display:flex;gap:8px;flex-wrap:wrap;align-items:center}' +
+      '.lh-rd-b button{font:inherit;font-size:14px;font-weight:600;padding:7px 13px;border-radius:999px;border:1px solid rgba(127,127,127,.4);background:transparent;color:inherit;cursor:pointer}' +
+      '.lh-rd-b button.bad{border-color:#c23b3b;color:#c23b3b}.lh-rd-b button.good{border-color:#1f8a5b;color:#1f8a5b}' +
+      '.lh-rd-b span{font-size:13px;opacity:.75}' +
+      '.lh-errb{display:inline-block;margin-left:8px;font-size:12px;font-weight:700;color:#fff;background:#c23b3b;border-radius:999px;padding:1px 9px;vertical-align:middle}' +
+      'body:not(.lr-editing) .aq.lh-aq{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}' +
+      '.lh-flash{animation:lhflash 2.4s ease-out}@keyframes lhflash{0%,30%{box-shadow:0 0 0 4px rgba(194,59,59,.55)}100%{box-shadow:0 0 0 0 rgba(194,59,59,0)}}' +
+      '.lh-errbar{position:fixed;right:max(14px,env(safe-area-inset-right,0px));bottom:max(14px,env(safe-area-inset-bottom,0px));z-index:2147483000;font:600 14px/1 system-ui,-apple-system,sans-serif;background:#c23b3b;color:#fff;border-radius:999px;padding:11px 16px;text-decoration:none;box-shadow:0 6px 20px rgba(0,0,0,.25)}' +
+      '</style>'));
+    document.head.appendChild(css);
+
+    function cardBlock(card) {
+      const cid = card.id, loc = idx.forCard(cid), e = ERR.entry(DOC.file, cid);
+      const links = loc.spots.map(s => '<a class="lh-go" href="' + esc(idx.reportURL(s.f, s.a)) + '"><b>' + esc(s.rep.label || 'Report') + '</b><span>' + esc(s.h || s.rep.title) + '</span></a>')
+        .concat(loc.reports.map(r => '<a class="lh-go" href="' + esc(idx.reportURL(r.f)) + '"><b>' + esc(r.label || 'Report') + '</b><span>' + esc(r.title) + '<small>kein Abschnitt markiert – Report zum Thema</small></span></a>'));
+      const st = e ? e.w + '× falsch' + (e.s ? ' · ' + e.s + '× richtig seitdem' : '') + (ERR.inLog(DOC.file, cid) ? ' · im Fehlerlog' : ' · raus aus dem Fehlerlog') : '';
+      return mark(el('<div class="lh-rd" data-lh-card="' + esc(cid) + '">' +
+        (links.length ? '<div class="lh-rd-h">Im Lernreport nachlesen</div>' + links.join('') : '') +
+        '<div class="lh-rd-b"><button class="bad" data-lh-ans="0">✗ Falsch gehabt</button><button class="good" data-lh-ans="1">✓ Gewusst</button>' +
+        (st ? '<span>' + esc(st) + '</span>' : '') + '</div></div>'));
+    }
+    function badge(card) {
+      const h = card.querySelector('header.ch'); if (!h) return;
+      const old = h.querySelector('.lh-errb'); if (old) old.remove();
+      const e = ERR.entry(DOC.file, card.id);
+      if (ERR.inLog(DOC.file, card.id)) h.appendChild(mark(el('<span class="lh-errb">Fehlerlog · ' + e.w + '× falsch</span>')));
+    }
+    function errBar() {
+      const old = document.querySelector('.lh-errbar'); if (old) old.remove();
+      const n = ERR.list(DOC.file).filter(x => idx.cards[x.cid]).length;
+      if (!n) return;
+      document.body.appendChild(mark(el('<a class="lh-errbar" href="' + esc(LH.APP + 'exam.html?f=' + encodeURIComponent(DOC.file)) + '">Fehlerlog · ' + n + '</a>')));
+    }
+    function mount() {
+      if (!idx || mounted || editing) return;
+      mounted = true;
+      if (isCatalog) {
+        document.querySelectorAll('article.card[id]').forEach(card => {
+          const solin = card.querySelector('details.sol .solin'); if (!solin) return;
+          const done = solin.querySelector('label.done');
+          solin.insertBefore(cardBlock(card), done || null);
+          badge(card);
+        });
+        errBar();
+      } else {
+        document.querySelectorAll('.aq').forEach(a => { if (idx.cardForNums((a.textContent.match(/\d+/g) || []).map(Number))) a.classList.add('lh-aq'); });
+      }
+    }
+    function unmount() {
+      if (!mounted) return; mounted = false;
+      document.querySelectorAll('.lh-rd, .lh-errb, .lh-errbar').forEach(n => n.remove());
+      document.querySelectorAll('.aq.lh-aq').forEach(a => a.classList.remove('lh-aq'));
+    }
+    function refreshCard(cid) {
+      const card = document.getElementById(cid); if (!card) return;
+      const old = card.querySelector('.lh-rd'); if (old) old.replaceWith(cardBlock(card));
+      badge(card); errBar();
+    }
+    document.addEventListener('click', e => {
+      if (editing || !idx) return;
+      const b = e.target.closest('[data-lh-ans]');
+      if (b) {
+        e.preventDefault();
+        const cid = b.closest('[data-lh-card]').getAttribute('data-lh-card');
+        ERR.record(DOC.file, cid, b.getAttribute('data-lh-ans') === '1');
+        refreshCard(cid); return;
+      }
+      const a = e.target.closest('.aq.lh-aq');
+      if (a && idx.catalog) {
+        const cid = idx.cardForNums((a.textContent.match(/\d+/g) || []).map(Number));
+        if (cid) { e.preventDefault(); location.href = idx.catalogURL(cid); }
+      }
+    });
+    Promise.all([LHLinks.forFile(DOC.file), ERR.load()]).then(([x]) => {
+      if (!x || !x.catalog) return;
+      idx = x; mount();
+    }).catch(err => console.warn('Verdrahtung nicht verfügbar:', err));
+    return { mount, unmount };
+  })();
+
+  /* Sprungziel aus dem Link (#abschnitt) anzeigen: umschließende Toggles
+     öffnen, hinscrollen, kurz markieren. Zweiter Durchgang, weil nachladende
+     Bilder darüber die Position noch verschieben können.                     */
+  (function jumpToHash() {
+    const id = decodeURIComponent((location.hash || '').slice(1));
+    if (!id) return;
+    const t = document.getElementById(id);
+    if (!t || t.hasAttribute('data-lr-ui')) return;
+    for (let d = t.parentElement; d; d = d.parentElement) if (d.tagName === 'DETAILS' && !d.classList.contains('sol')) d.open = true;
+    const barH = () => (document.getElementById('lr-bar') || { offsetHeight: 0 }).offsetHeight + 12;
+    const go = () => window.scrollTo({ top: t.getBoundingClientRect().top + scrollY - barH(), behavior: 'auto' });
+    let userMoved = false;
+    const stop = () => { userMoved = true; };
+    ['wheel', 'touchmove', 'keydown'].forEach(ev => window.addEventListener(ev, stop, { once: true, passive: true }));
+    setTimeout(() => { go(); t.classList.add('lh-flash'); setTimeout(() => t.classList.remove('lh-flash'), 2600); }, 120);
+    setTimeout(() => { if (!userMoved) go(); }, 1400);
+  })();
+
+  /* Bilder, die nur als Sitzungs-Link gespeichert waren, sichtbar machen. */
+  document.querySelectorAll('img[data-lh-missing]').forEach(img => {
+    if (img.nextElementSibling && img.nextElementSibling.classList.contains('lh-missing')) return;
+    img.insertAdjacentElement('afterend', mark(el('<div class="lh-missing">Bild fehlt – es wurde früher nur als vorläufiger Link gespeichert. Bitte im Bearbeiten-Modus neu einfügen.</div>')));
+  });
+
   LH.hydrateImages(document);
   if (document.readyState === 'complete') LH.prefetchImages(); else window.addEventListener('load', () => LH.prefetchImages());
   saveBtn.addEventListener('click', () => save());
