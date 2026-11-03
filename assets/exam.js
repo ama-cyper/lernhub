@@ -436,14 +436,14 @@
      Tastennummern unterscheiden sich je nach Controller, Modus und Browser.
      A→A · B→B · Y→C · X→D · L→E · R→F · ←/→ zurück/weiter · + Lösung · ↑/↓ scrollen */
   const PAD = (function () {
-    const K_PAD = 'lh_pad_map';
+    const K_PAD = 'lh_pad_map', K_LAST = 'lh_pad_last';
     const STEPS = [['a', 'A'], ['b', 'B'], ['y', 'Y'], ['x', 'X'], ['left', '← Pfeil links'], ['right', '→ Pfeil rechts'],
       ['up', '↑ Pfeil hoch'], ['down', '↓ Pfeil runter'], ['plus', '+'], ['l', 'L (Schultertaste, für Antwort E)'], ['r', 'R (Schultertaste, für Antwort F)']];
     const LETTER = { a: 'A', b: 'B', y: 'C', x: 'D', l: 'E', r: 'F' };
     const maps = store.get(K_PAD, {});
-    let cal = null, held = {}, asked = {}, lastId = null;
+    let cal = null, held = {}, asked = {}, lastId = null, lastTick = 0, framePending = false;
 
-    const pads = () => { try { return [...(navigator.getGamepads ? navigator.getGamepads() : [])].filter(Boolean); } catch (e) { return []; } };
+    const pads = () => { try { return [...(navigator.getGamepads ? navigator.getGamepads() : [])].filter(g => g && g.connected !== false); } catch (e) { return []; } };
     const isOn = b => !!b && (b.pressed || b.value > 0.5);
     const active = (gp, m) => m.t === 'b' ? isOn(gp.buttons[m.i]) : Math.abs((gp.axes[m.i] ?? 99) - m.v) < 0.2;
     const anyBtn = gp => [...gp.buttons].some(isOn);
@@ -463,7 +463,7 @@
         <div class="pad-cal-b"><button class="btn ghost" data-pad="cancel">Abbrechen</button><button class="btn ghost" data-pad="skip">Überspringen</button></div></div>`;
     }
     function closeCal(save) {
-      if (save && cal) { maps[cal.id] = cal.map; store.set(K_PAD, maps); }
+      if (save && cal) { maps[cal.id] = cal.map; store.set(K_PAD, maps); store.set(K_LAST, cal.id); }
       cal = null; const o = $('#padCalBox'); if (o) o.remove();
       held = {}; hint();
     }
@@ -512,21 +512,49 @@
         if (sess.idx + 1 < sess.ids.length) { sess.idx++; saveSess(); renderQ(); }   // nichts gewählt → überspringen, zählt nicht
       }
     }
-    function tick() {
+    function mapFor(gp) {       // nach dem Neuverbinden kann sich die Gerätekennung ändern → letzte Belegung weiterverwenden
+      if (maps[gp.id]) return maps[gp.id];
+      const last = maps[store.get(K_LAST, null)];
+      if (!last) return null;
+      const fits = Object.values(last).every(m => m.t === 'b' ? m.i < gp.buttons.length : m.i < gp.axes.length);
+      if (!fits) return null;
+      maps[gp.id] = last; store.set(K_PAD, maps);
+      return last;
+    }
+    function toast(msg) {
+      let o = $('#padToast');
+      if (!o) { o = document.createElement('div'); o.id = 'padToast'; o.className = 'pad-toast'; o.setAttribute('role', 'status'); document.body.appendChild(o); }
+      o.textContent = msg; o.hidden = false;
+      clearTimeout(toast.t); toast.t = setTimeout(() => { o.hidden = true; }, 3500);
+    }
+    function step() {
       const list = pads();
+      if (cal && !list.some(g => g.id === cal.id)) closeCal(false);
       for (const gp of list) {
         if (cal) { calTick(gp); continue; }
-        const m = maps[gp.id];
+        const m = mapFor(gp);
         if (!m) { if (anyBtn(gp) && !asked[gp.id]) { asked[gp.id] = 1; lastId = gp.id; begin(gp); } continue; }
-        if (lastId !== gp.id) { lastId = gp.id; hint(); }
+        if (lastId !== gp.id) { lastId = gp.id; store.set(K_LAST, gp.id); hint(); }
         for (const name in m) {
           const on = active(gp, m[name]), key = gp.index + ':' + name;
-          if (on && !held[key]) act(name);
+          if (on && !held[key]) { held[key] = on; try { act(name); } catch (e) { console.warn('Controller-Aktion fehlgeschlagen:', e); } }
           held[key] = on;
         }
       }
-      requestAnimationFrame(tick);
     }
+    function tick() {
+      framePending = false; lastTick = Date.now();
+      try { step(); } catch (e) { console.warn('Controller:', e); }   // ein Fehler darf die Abfrage nie beenden
+      schedule();
+    }
+    function schedule() { if (!framePending) { framePending = true; requestAnimationFrame(tick); } }
+    window.addEventListener('gamepadconnected', () => { held = {}; toast('Controller verbunden'); schedule(); });
+    window.addEventListener('gamepaddisconnected', e => {
+      held = {}; if (cal && e.gamepad && e.gamepad.id === cal.id) closeCal(false);
+      toast('Controller getrennt – Home-Taste drücken zum Neuverbinden');
+    });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) { held = {}; framePending = false; schedule(); } });
+    setInterval(() => { if (!document.hidden && Date.now() - lastTick > 1500) { framePending = false; schedule(); } }, 1000);
     document.addEventListener('click', e => {
       const t = e.target.closest('#padCal, [data-pad]'); if (!t) return;
       if (t.id === 'padCal') {
@@ -536,7 +564,7 @@
       } else if (t.dataset.pad === 'skip' && cal) nextStep();
       else if (t.dataset.pad === 'cancel') closeCal(false);
     });
-    return { start: () => requestAnimationFrame(tick), hint };
+    return { start: schedule, hint };
   })();
   window.LHPad = PAD;
 
