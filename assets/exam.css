@@ -176,6 +176,12 @@ a{color:var(--accent)}
 .ex-self{margin-left:auto;color:var(--mut);font-weight:600;font-size:.9rem}
 .ex-keys{text-align:center;color:var(--mut);font-size:.76rem;margin-top:18px}
 @media (hover:none){.ex-keys{display:none}}
+.ex-pad{text-align:center;color:var(--mut);font-size:.76rem;margin-top:8px}
+.pad-cal{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.45)}
+.pad-cal-box{width:100%;max-width:400px;padding:22px 20px;border-radius:var(--r);background:var(--paper);box-shadow:var(--e2);text-align:center}
+.pad-cal-k{color:var(--mut);font-size:.8rem}
+.pad-cal-q{font-size:1.35rem;margin:12px 0 18px}
+.pad-cal-b{display:flex;justify-content:center;gap:8px;flex-wrap:wrap}
 
 /* ---------- Auswertung ---------- */
 .ex-result{display:flex;align-items:center;gap:22px;padding:22px 20px;margin:4px 0 16px;border-radius:var(--r);background:var(--paper);box-shadow:var(--e2)}

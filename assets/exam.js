@@ -210,6 +210,8 @@
             <div class="segs">${seg('count', 10, '10')}${seg('count', 20, '20')}${seg('count', 40, '40')}${seg('count', 'all', 'Alle')}</div></div>
           <div class="ex-opt"><div class="ex-opt-l">Reihenfolge</div>
             <div class="segs">${seg('order', 'mix', 'Gemischt')}${seg('order', 'cat', 'Wie im Katalog')}</div></div>
+          <div class="ex-opt"><div class="ex-opt-l">Controller<small>Mit dem Gerät koppeln, dann eine beliebige Taste drücken. Die Einrichtung startet beim ersten Mal von selbst.</small></div>
+            <div class="segs"><button class="seg" id="padCal">Tasten neu einrichten</button></div></div>
           <label class="ex-sw"><input type="checkbox" data-chk="hot" ${pref.hot ? 'checked' : ''}><span class="sw"></span><span>Nur mehrfach gefragte</span></label>
           <label class="ex-sw"><input type="checkbox" data-chk="free" ${pref.free ? 'checked' : ''}><span class="sw"></span><span>Freitext- &amp; Abbildungsfragen einbeziehen</span></label>
           <label class="ex-sw${wrongCount ? '' : ' dis'}"><input type="checkbox" data-chk="wrong" ${pref.wrong ? 'checked' : ''} ${wrongCount ? '' : 'disabled'}><span class="sw"></span>
@@ -295,8 +297,10 @@
         </article>
         <div class="ex-actions" id="actions"></div>
         <p class="ex-keys">Tastatur: ${it.opts && it.opts.length && it.type !== 'free' ? 'A–' + it.opts[it.opts.length - 1].letter + ' wählen · ' : ''}Enter = prüfen / weiter</p>
+        <p class="ex-pad" id="padHint" hidden></p>
       </main>`;
     paint(it, r);
+    if (window.LHPad) LHPad.hint();
 
     app.onclick = e => {
       const t = e.target.closest('button'); if (!t) return;
@@ -427,6 +431,115 @@
     if (/^[a-h]$/i.test(e.key)) { const b = $(`.opt[data-l="${e.key.toUpperCase()}"]`); if (b && !b.disabled) { e.preventDefault(); b.click(); } }
   });
 
+  /* ================= Controller (Gamepad-API) =================
+     Tastenbelegung wird pro Gerät einmal eingelernt: Layout und gemeldete
+     Tastennummern unterscheiden sich je nach Controller, Modus und Browser.
+     A→A · B→B · Y→C · X→D · L→E · R→F · ←/→ zurück/weiter · + Lösung · ↑/↓ scrollen */
+  const PAD = (function () {
+    const K_PAD = 'lh_pad_map';
+    const STEPS = [['a', 'A'], ['b', 'B'], ['y', 'Y'], ['x', 'X'], ['left', '← Pfeil links'], ['right', '→ Pfeil rechts'],
+      ['up', '↑ Pfeil hoch'], ['down', '↓ Pfeil runter'], ['plus', '+'], ['l', 'L (Schultertaste, für Antwort E)'], ['r', 'R (Schultertaste, für Antwort F)']];
+    const LETTER = { a: 'A', b: 'B', y: 'C', x: 'D', l: 'E', r: 'F' };
+    const maps = store.get(K_PAD, {});
+    let cal = null, held = {}, asked = {}, lastId = null;
+
+    const pads = () => { try { return [...(navigator.getGamepads ? navigator.getGamepads() : [])].filter(Boolean); } catch (e) { return []; } };
+    const isOn = b => !!b && (b.pressed || b.value > 0.5);
+    const active = (gp, m) => m.t === 'b' ? isOn(gp.buttons[m.i]) : Math.abs((gp.axes[m.i] ?? 99) - m.v) < 0.2;
+    const anyBtn = gp => [...gp.buttons].some(isOn);
+
+    function hint() {
+      const el = $('#padHint'); if (!el) return;
+      const m = lastId && maps[lastId];
+      el.hidden = !m;
+      if (m) el.textContent = 'Controller: A·B·Y·X = A·B·C·D' + (m.l ? ' · L = E' : '') + (m.r ? ' · R = F' : '') + ' · ←/→ zurück/weiter · + Lösung · ↑/↓ scrollen';
+    }
+    function shade() {
+      let o = $('#padCalBox');
+      if (!o) { o = document.createElement('div'); o.id = 'padCalBox'; o.className = 'pad-cal'; document.body.appendChild(o); }
+      const [, label] = STEPS[cal.step];
+      o.innerHTML = `<div class="pad-cal-box" role="dialog" aria-live="polite"><div class="pad-cal-k">Controller einrichten · ${cal.step + 1} / ${STEPS.length}</div>
+        <div class="pad-cal-q">Drücke <b>${esc(label)}</b></div>
+        <div class="pad-cal-b"><button class="btn ghost" data-pad="cancel">Abbrechen</button><button class="btn ghost" data-pad="skip">Überspringen</button></div></div>`;
+    }
+    function closeCal(save) {
+      if (save && cal) { maps[cal.id] = cal.map; store.set(K_PAD, maps); }
+      cal = null; const o = $('#padCalBox'); if (o) o.remove();
+      held = {}; hint();
+    }
+    function nextStep() { cal.step++; cal.wait = true; cal.step >= STEPS.length ? closeCal(true) : shade(); }
+    function begin(gp) {
+      cal = { id: gp.id, step: 0, map: {}, wait: true, rest: null };
+      shade();
+    }
+    function calTick(gp) {
+      if (gp.id !== cal.id) return;
+      if (cal.wait) {                     // erst alles loslassen, dann Ruhelage der Achsen merken
+        if (anyBtn(gp)) return;
+        if (!cal.rest) cal.rest = [...gp.axes];
+        if (gp.axes.some((v, i) => Math.abs(v - cal.rest[i]) > 0.3)) return;
+        cal.wait = false; return;
+      }
+      const used = Object.values(cal.map);
+      let hit = null;
+      for (let i = 0; i < gp.buttons.length; i++) if (isOn(gp.buttons[i]) && !used.some(m => m.t === 'b' && m.i === i)) { hit = { t: 'b', i }; break; }
+      if (!hit) for (let i = 0; i < gp.axes.length; i++) {
+        const v = gp.axes[i];
+        if (Math.abs(v - cal.rest[i]) > 0.4 && !used.some(m => m.t === 'a' && m.i === i && Math.abs(m.v - v) < 0.2)) { hit = { t: 'a', i, v: Math.round(v * 100) / 100 }; break; }
+      }
+      if (hit) { cal.map[STEPS[cal.step][0]] = hit; nextStep(); }
+    }
+    function act(name) {
+      if (!$('.ex-q')) {                  // Startseite / Auswertung
+        if (name === 'plus') { const b = $('#resumeSess') || $('#start') || $('#redo') || $('#again'); if (b && !b.disabled) b.click(); }
+        else if (name === 'up' || name === 'down') scrollBy({ top: (name === 'up' ? -.45 : .45) * innerHeight, behavior: 'smooth' });
+        return;
+      }
+      if (LETTER[name]) {
+        const self = name === 'a' ? $('#know') : name === 'b' ? $('#dunno') : null;
+        if (self) return self.click();
+        const b = $(`.opt[data-l="${LETTER[name]}"]`); if (b && !b.disabled) b.click();
+        return;
+      }
+      if (name === 'left') { const b = $('#prev'); if (b) b.click(); return; }
+      if (name === 'plus') { const b = $('#check') || $('#next'); if (b) b.click(); return; }
+      if (name === 'up' || name === 'down') return scrollBy({ top: (name === 'up' ? -.45 : .45) * innerHeight, behavior: 'smooth' });
+      if (name === 'right') {
+        const nx = $('#next'); if (nx) return nx.click();
+        const ck = $('#check'); if (!ck) return;      // Freitext: erst „Gewusst“/„Nicht gewusst“
+        const r = sess.res[sess.ids[sess.idx]];
+        if (r && r.sel.length) return ck.click();     // gewählt → auswerten
+        if (sess.idx + 1 < sess.ids.length) { sess.idx++; saveSess(); renderQ(); }   // nichts gewählt → überspringen, zählt nicht
+      }
+    }
+    function tick() {
+      const list = pads();
+      for (const gp of list) {
+        if (cal) { calTick(gp); continue; }
+        const m = maps[gp.id];
+        if (!m) { if (anyBtn(gp) && !asked[gp.id]) { asked[gp.id] = 1; lastId = gp.id; begin(gp); } continue; }
+        if (lastId !== gp.id) { lastId = gp.id; hint(); }
+        for (const name in m) {
+          const on = active(gp, m[name]), key = gp.index + ':' + name;
+          if (on && !held[key]) act(name);
+          held[key] = on;
+        }
+      }
+      requestAnimationFrame(tick);
+    }
+    document.addEventListener('click', e => {
+      const t = e.target.closest('#padCal, [data-pad]'); if (!t) return;
+      if (t.id === 'padCal') {
+        const gp = pads()[0];
+        if (gp) begin(gp);
+        else { t.textContent = 'Erst eine Controller-Taste drücken'; delete asked[lastId]; for (const k in maps) delete maps[k]; store.del(K_PAD); }
+      } else if (t.dataset.pad === 'skip' && cal) nextStep();
+      else if (t.dataset.pad === 'cancel') closeCal(false);
+    });
+    return { start: () => requestAnimationFrame(tick), hint };
+  })();
+  window.LHPad = PAD;
+
   /* ================= Start ================= */
   (async function boot() {
     if (!file || !/^[^/\\]+\.html?$/i.test(file)) return fail('Kein Katalog angegeben.');
@@ -450,6 +563,7 @@
         if (!sess) { const y = scrollY; renderSetup(); scrollTo(0, y); }
       }).catch(e => console.warn('Verdrahtung nicht verfügbar:', e));
     }
+    PAD.start();
     LH.hydrateImages(document);
     new MutationObserver(() => LH.hydrateImages(document)).observe(app, { childList: true });
   })();
