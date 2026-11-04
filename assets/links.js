@@ -80,7 +80,8 @@
   }
 
   const memo = new Map();
-  function forFile(file) {
+  function forFile(file, fresh) {
+    if (fresh) memo.delete(file);
     if (memo.has(file)) return memo.get(file);
     const p = (async () => {
       const [{ data: hub }, tree] = await Promise.all([LH.readJSON('hub-data.json'), LH.tree()]);
@@ -97,7 +98,7 @@
       return wrap(idx);
     })();
     memo.set(file, p);
-    p.catch(() => memo.delete(file));
+    p.then(x => { if (!x) memo.delete(file); }, () => memo.delete(file));
     return p;
   }
 

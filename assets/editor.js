@@ -933,7 +933,8 @@
       '.lh-rd-b button.bad{border-color:#c23b3b;color:#c23b3b}.lh-rd-b button.good{border-color:#1f8a5b;color:#1f8a5b}' +
       '.lh-rd-b span{font-size:13px;opacity:.75}' +
       '.lh-errb{display:inline-block;margin-left:8px;font-size:12px;font-weight:700;color:#fff;background:#c23b3b;border-radius:999px;padding:1px 9px;vertical-align:middle}' +
-      'body:not(.lr-editing) .aq.lh-aq{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}' +
+      'body:not(.lr-editing) .aq.lh-aq{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px;-webkit-tap-highlight-color:rgba(194,59,59,.25)}' +
+      'body:not(.lr-editing) .aq.lh-aq::after{content:" ↗";font-weight:700}' +
       '.lh-flash{animation:lhflash 2.4s ease-out}@keyframes lhflash{0%,30%{box-shadow:0 0 0 4px rgba(194,59,59,.55)}100%{box-shadow:0 0 0 0 rgba(194,59,59,0)}}' +
       '.lh-errbar{position:fixed;right:max(14px,env(safe-area-inset-right,0px));bottom:max(14px,env(safe-area-inset-bottom,0px));z-index:2147483000;font:600 14px/1 system-ui,-apple-system,sans-serif;background:#c23b3b;color:#fff;border-radius:999px;padding:11px 16px;text-decoration:none;box-shadow:0 6px 20px rgba(0,0,0,.25)}' +
       '</style>'));
@@ -1001,10 +1002,22 @@
         if (cid) { e.preventDefault(); location.href = idx.catalogURL(cid); }
       }
     });
-    Promise.all([LHLinks.forFile(DOC.file), ERR.load()]).then(([x]) => {
-      if (!x || !x.catalog) return;
-      idx = x; mount();
-    }).catch(err => console.warn('Verdrahtung nicht verfügbar:', err));
+    /* Index laden. Direkt nach dem Anlegen oder Verschieben eines Reports
+       liefert GitHub die Ordnerliste manchmal noch ein paar Sekunden alt —
+       dann nicht aufgeben, sondern nachladen.                               */
+    ERR.load();
+    (function tryLoad(n) {
+      LHLinks.forFile(DOC.file, n > 0).then(x => {
+        if (x && x.catalog) { idx = x; mount(); return; }
+        if (n < 4) setTimeout(() => tryLoad(n + 1), [3000, 8000, 20000, 45000][n]);
+      }).catch(err => {
+        console.warn('Verdrahtung nicht verfügbar:', err);
+        if (n < 4) setTimeout(() => tryLoad(n + 1), [3000, 8000, 20000, 45000][n]);
+      });
+    })(0);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && !idx) LHLinks.forFile(DOC.file, true).then(x => { if (x && x.catalog) { idx = x; mount(); } }).catch(() => {});
+    });
     return { mount, unmount };
   })();
 
