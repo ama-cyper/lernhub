@@ -818,6 +818,18 @@
     clone.querySelectorAll('[' + STICK + ']').forEach(n => n.removeAttribute(STICK));
     clone.querySelectorAll('[contenteditable]').forEach(n => n.removeAttribute('contenteditable'));
     clone.querySelectorAll('.lr-sel, .lr-dragging, .lr-blocksel, .lh-flash, .lh-aq').forEach(n => n.classList.remove('lr-sel', 'lr-dragging', 'lr-blocksel', 'lh-flash', 'lh-aq'));
+    // Mindmap: Das Report-Skript zeichnet Knoten und Linien bei jedem Öffnen neu.
+    // Die gezeichnete Fassung nie mitspeichern — sonst liegt nach jedem Speichern
+    // eine weitere komplette Kopie aller Knoten (samt Bildern) in der Datei.
+    clone.querySelectorAll('section.mm').forEach(mm => {
+      mm.classList.remove('fsx');
+      mm.querySelectorAll('.mm-nodes, .mm-svg, .mm-pc').forEach(n => { n.textContent = ''; });
+      mm.querySelectorAll('.mm-cv').forEach(n => n.removeAttribute('style'));
+      mm.querySelectorAll('.mm-pnl').forEach(n => n.classList.remove('on'));
+      mm.querySelectorAll('.mm-stage').forEach(n => n.classList.remove('act', 'drag'));
+      mm.querySelectorAll('.mm-fsclose').forEach(n => n.remove());
+    });
+    [clone, clone.querySelector('body')].forEach(n => { if (n && n.style && n.style.overflow === 'hidden') { n.style.removeProperty('overflow'); if (!n.getAttribute('style')) n.removeAttribute('style'); } });
     clone.querySelectorAll('img[draggable]').forEach(n => n.removeAttribute('draggable'));
     // Bilder aus dem privaten Repo: wieder den echten, relativen Pfad eintragen.
     clone.querySelectorAll('img[data-gh-src]').forEach(n => { n.setAttribute('src', n.getAttribute('data-gh-src')); n.removeAttribute('data-gh-src'); });
@@ -1869,6 +1881,9 @@
   const IGNORE_ATTR = { open: 1, contenteditable: 1, draggable: 1, src: 1, spellcheck: 1, 'data-lr-sticky': 1 };
   const stripLr = v => (v || '').split(/\s+/).filter(x => x && !/^lr-(sel|animating|dragging|blocksel)$/.test(x)).join(' ');
   function keepRec(m) {
+    // Mindmap zeichnet sich selbst (Knoten, Linien, Zoom) — das ist keine Bearbeitung.
+    const tg = m.target.nodeType === 1 ? m.target : m.target.parentElement;
+    if (tg && tg.closest && tg.closest('section.mm .mm-stage, section.mm .mm-bar') && !tg.closest('.mm-data')) return false;
     if (m.type === 'attributes') {
       const a = m.attributeName;
       if (IGNORE_ATTR[a]) return false;
