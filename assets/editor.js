@@ -343,20 +343,61 @@
     clearTimeout(autosaveTimer);
     autosaveTimer = setTimeout(() => { if (dirty) save(); }, AUTOSAVE_DELAY);
   }
+  /* Umschalten muss immer klappen: Jeder Schritt ist einzeln abgesichert.
+     Früher konnte ein Fehler in einem Nebenschritt (Verlauf, Menüs …) den
+     Wechsel abbrechen — dann stand „Fertig“ da, aber man kam nur per Neuladen
+     aus dem Bearbeiten-Modus.                                               */
+  function safe(fn, what) { try { fn(); } catch (e) { console.warn('Bearbeiten-Modus (' + what + '):', e); } }
   function setEditing(v) {
     editing = v;
-    hideHoverOverlays();
     document.body.classList.toggle('lr-editing', v);
     regions.forEach(r => r.setAttribute('contenteditable', v ? 'true' : 'false'));
-    if (v) { repair(); UM.start(); } else { UM.stop(); hideMenu(); handle.style.display = plusBtn.style.display = 'none'; hoverBlock = null; }
     toggleBtn.textContent = v ? 'Fertig' : 'Bearbeiten';
     toggleBtn.classList.toggle('on', v);
-    syncBar(false);            // andere Beschriftung → Leiste kann umbrechen
-    if (!v) { hideSlash(); pop.style.display = 'none'; deselectImg(); if (dirty) save(); }
-    else region.focus({ preventScroll: true });
-    if (typeof F2 !== 'undefined') { if (v) F2.unmount(); else F2.mount(); }
+    safe(hideHoverOverlays, 'overlays');
+    if (v) { safe(repair, 'repair'); safe(() => UM.start(), 'verlauf'); }
+    else {
+      safe(() => UM.stop(), 'verlauf');
+      safe(hideMenu, 'menu');
+      safe(() => { handle.style.display = plusBtn.style.display = 'none'; hoverBlock = null; }, 'griff');
+      safe(() => { const a = document.activeElement; if (a && a.blur && regions.some(r => r.contains(a))) a.blur(); }, 'tastatur');
+    }
+    safe(() => syncBar(false), 'leiste');            // andere Beschriftung → Leiste kann umbrechen
+    if (!v) {
+      safe(hideSlash, 'slash'); safe(() => { pop.style.display = 'none'; }, 'pop'); safe(deselectImg, 'bild');
+      if (dirty) safe(() => { const r = save(); if (r && r.catch) r.catch(e => console.warn('Speichern:', e)); }, 'speichern');
+    }
+    else safe(() => region.focus({ preventScroll: true }), 'fokus');
+    safe(() => { if (typeof F2 !== 'undefined') { if (v) F2.unmount(); else F2.mount(); } }, 'altfragen');
+    safe(placeBar, 'leiste-pos');
   }
-  toggleBtn.addEventListener('click', () => setEditing(!editing));
+  /* Antippen am iPad: Die Bildschirmtastatur schließt beim ersten Tipp und
+     verschiebt die Seite — der Klick ging dann oft ins Leere. Deshalb schon
+     beim Loslassen des Fingers umschalten und den folgenden Klick schlucken. */
+  let toggleTouch = 0;
+  toggleBtn.addEventListener('touchend', e => { e.preventDefault(); toggleTouch = Date.now(); setEditing(!editing); }, { passive: false });
+  toggleBtn.addEventListener('click', () => { if (Date.now() - toggleTouch < 700) return; setEditing(!editing); });
+  // Tastatur: Esc oder ⌘/Strg + Enter beendet das Bearbeiten.
+  document.addEventListener('keydown', e => {
+    if (!editing) return;
+    if ((e.key === 'Enter' && (e.metaKey || e.ctrlKey)) ||
+        (e.key === 'Escape' && !document.querySelector('section.mm.fsx') && pop.style.display === 'none' &&
+         slashMenu.style.display === 'none' && (typeof blockMenu === 'undefined' || getComputedStyle(blockMenu).display === 'none'))) {
+      e.preventDefault(); setEditing(false);
+    }
+  }, true);
+  /* iPad mit offener Tastatur: Safari lässt fest angeheftete Leisten
+     mitscrollen, „Fertig“ verschwindet aus dem Bild. Leiste am sichtbaren
+     Ausschnitt festhalten.                                                  */
+  function placeBar() {
+    const vv = window.visualViewport;
+    const off = vv ? Math.max(0, vv.offsetTop) : 0;
+    bar.style.transform = off > 0.5 ? 'translateY(' + off + 'px)' : '';
+  }
+  if (window.visualViewport) {
+    visualViewport.addEventListener('resize', placeBar);
+    visualViewport.addEventListener('scroll', placeBar);
+  }
   onRegion('input', () => { setDirty(true); onType(); });
 
   /* ================= Format-Helfer ================= */
