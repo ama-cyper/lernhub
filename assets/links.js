@@ -14,11 +14,12 @@
   'use strict';
   if (window.LHLinks || !window.LH) return;
 
-  /* Ordner, in denen die Verdrahtung aktiv ist (IDs aus hub-data.json).
-     Weitere Fächer: ID hier ergänzen.                                       */
+  /* Verdrahtung ist in jedem Ordner aktiv, in dem ein Altfragen-Katalog liegt
+     (Dateiname enthält „katalog“). Zusätzlich fest freigeschaltete Ordner: */
   const LINK_FOLDERS = ['fmvb8065s77uq'];   // Pharmakologie 2 (neu)
+  const hasCatalog = files => files.some(f => /katalog/i.test(f));
 
-  const CACHE_V = 2;
+  const CACHE_V = 3;
   const KEY_RE = /\b(VL\d{2}|SS\d{2}|S\d{2}(?:-\d{2})?)\b/g;
   const nums = t => (String(t || '').match(/\d+/g) || []).map(Number);
   const clean = t => String(t || '').replace(/\s+/g, ' ').trim();
@@ -87,8 +88,9 @@
       const [{ data: hub }, tree] = await Promise.all([LH.readJSON('hub-data.json'), LH.tree()]);
       if (!hub || !hub.order) return null;
       const fid = Object.keys(hub.order).find(k => (hub.order[k] || []).includes(file));
-      if (!fid || !LINK_FOLDERS.includes(fid)) return null;
+      if (!fid) return null;
       const files = hub.order[fid].filter(f => tree.has('lectures/' + f));
+      if (!LINK_FOLDERS.includes(fid) && !hasCatalog(files)) return null;
       const stamp = CACHE_V + '|' + files.map(f => f + '@' + tree.get('lectures/' + f)).join('|');
       const ck = 'lh_links:' + fid;
       const hit = local.get(ck, null);

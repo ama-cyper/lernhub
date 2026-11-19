@@ -282,12 +282,50 @@ function saveLayout() {
   layoutTimer = setTimeout(flushLayout, 900);
 }
 async function flushLayout() {
+  clearTimeout(layoutTimer); layoutTimer = null;
   if (layoutBusy) await layoutBusy.catch(() => {});
   const snap = { folders: state.folders.map(f => ({ ...f })), order: JSON.parse(JSON.stringify(state.order)) };
+  const known = new Set(shaByFile.keys());
+  let grew = false;
   setSync('Speichere …');
-  layoutBusy = LH.updateJSON(DATA_FILE, () => normalizeData(snap, [...shaByFile.keys()].sort()), 'Hub: Ordner/Reihenfolge');
-  try { await layoutBusy; setSync('Synchronisiert'); return true; }
+  layoutBusy = LH.updateJSON(DATA_FILE, remote => {
+    const r = mergeLayout(remote, snap, known); grew = r.grew; return r.data;
+  }, 'Hub: Ordner/Reihenfolge');
+  try {
+    await layoutBusy; setSync('Synchronisiert');
+    if (grew) load();   // ein anderes Gerät hatte inzwischen etwas angelegt → anzeigen
+    return true;
+  }
   catch (e) { setSync('Fehler', true); toast('Reihenfolge konnte nicht gespeichert werden: ' + (e.message || '')); return false; }
+  finally { layoutBusy = null; }
+}
+
+/* Eigene Struktur speichern, OHNE fremde Neuzugänge zu verlieren: Reports oder
+   Ordner, die dieses Gerät (noch) nicht kennt — frisch hochgeladen, auf einem
+   anderen Gerät angelegt, oder von GitHub noch nicht ausgeliefert —, bleiben
+   an ihrem Platz. Früher wurde hier blind der eigene Stand drübergeschrieben;
+   dadurch flogen neue Reports nach dem nächsten Sortieren aus ihrem Ordner. */
+const removedFiles = new Set(), removedFolders = new Set();
+function mergeLayout(remote, snap, known) {
+  remote = remote && typeof remote === 'object' ? remote : defaultData();
+  const merged = { folders: snap.folders.map(f => ({ ...f })), order: JSON.parse(JSON.stringify(snap.order)) };
+  if (!merged.order[ROOT_ID]) merged.order[ROOT_ID] = [];
+  let grew = false;
+  for (const f of (Array.isArray(remote.folders) ? remote.folders : [])) {
+    if (!f || typeof f.id !== 'string' || removedFolders.has(f.id) || merged.folders.some(x => x.id === f.id)) continue;
+    merged.folders.push({ ...f }); merged.order[f.id] = []; grew = true;
+  }
+  const have = new Set(Object.values(merged.order).flat());
+  const extra = [];
+  const src = remote.order && typeof remote.order === 'object' ? remote.order : {};
+  for (const [k, list] of Object.entries(src)) {
+    for (const name of (Array.isArray(list) ? list : [])) {
+      if (typeof name !== 'string' || have.has(name) || known.has(name) || removedFiles.has(name)) continue;
+      (merged.order[k] ? merged.order[k] : merged.order[ROOT_ID]).push(name);
+      have.add(name); extra.push(name); grew = true;
+    }
+  }
+  return { data: normalizeData(merged, [...known, ...extra].sort()), grew };
 }
 
 /* Zustand aus dem DOM übernehmen (nach dem Ziehen). */
@@ -375,6 +413,7 @@ function deleteFolder(id) {
   if (!confirm(msg)) return;
   state.order[ROOT_ID] = [...state.order[ROOT_ID], ...(state.order[id] || [])];
   delete state.order[id];
+  removedFolders.add(id);
   state.folders = state.folders.filter(x => x.id !== id);
   render();
   saveLayout();
@@ -445,6 +484,7 @@ async function del(file) {
   try {
     await LH.del('lectures/' + file, shaByFile.get(file), 'Gelöscht: ' + file);
     shaByFile.delete(file);
+    removedFiles.add(file);
     for (const k of Object.keys(state.order)) state.order[k] = state.order[k].filter(f => f !== file);
     await flushLayout();
     toast('Gelöscht.'); load();
@@ -700,46 +740,114 @@ document.addEventListener('contextmenu', ev => { if (drag) ev.preventDefault(); 
 const addDlg = document.getElementById('addDlg');
 const dropzone = document.getElementById('dropzone');
 const fileInput = document.getElementById('fileInput');
-document.getElementById('addBtn').addEventListener('click', () => { refreshFolderSelects(); addDlg.showModal(); });
+document.getElementById('addBtn').addEventListener('click', () => { refreshFolderSelects(); addMsg(''); addDlg.showModal(); });
 document.getElementById('cancelAdd').addEventListener('click', () => addDlg.close());
 dropzone.addEventListener('click', () => fileInput.click());
-fileInput.addEventListener('change', () => { if (fileInput.files[0]) importFile(fileInput.files[0]); });
+fileInput.addEventListener('change', () => { if (fileInput.files.length) importFiles(fileInput.files); });
 ['dragover', 'dragenter'].forEach(e => dropzone.addEventListener(e, ev => { ev.preventDefault(); dropzone.classList.add('hot'); }));
 ['dragleave', 'drop'].forEach(e => dropzone.addEventListener(e, ev => { ev.preventDefault(); dropzone.classList.remove('hot'); }));
-dropzone.addEventListener('drop', ev => { const f = ev.dataTransfer.files[0]; if (f) importFile(f); });
+dropzone.addEventListener('drop', ev => { if (ev.dataTransfer.files.length) importFiles(ev.dataTransfer.files); });
 
 function slugify(name) {
   return name.toLowerCase().replace(/\.html?$/, '')
     .replace(/[äàáâ]/g, 'a').replace(/[öòóô]/g, 'o').replace(/[üùúû]/g, 'u').replace(/ß/g, 'ss')
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'vorlesung';
 }
-/* Neuer Report: eingebettete Bilder werden als eigene Dateien abgelegt, alles
-   zusammen landet in EINEM Speicherstand im privaten Repo. */
-async function importFile(file) {
-  let html = await file.text();
-  const folder = document.getElementById('addFolderSel').value;
+
+/* Gleichnamiger Report vorhanden → ersetzen (Name bleibt: Ordner, Verlinkungen
+   zwischen Katalog und Reports und Fehlerlog funktionieren weiter) oder Kopie. */
+const dupDlg = document.getElementById('dupDlg');
+function askDuplicate(fname) {
+  return new Promise(resolve => {
+    document.getElementById('dupName').textContent = fname;
+    const m = metaByFile.get(fname);
+    document.getElementById('dupTitle').textContent = m && m.title ? m.title : '';
+    dupDlg.returnValue = '';
+    dupDlg.addEventListener('close', () => resolve(dupDlg.returnValue || 'cancel'), { once: true });
+    dupDlg.showModal();
+  });
+}
+
+const addStatus = document.getElementById('addStatus');
+function addMsg(t, bad) { addStatus.textContent = t || ''; addStatus.classList.toggle('bad', !!bad); }
+
+/* Neue Reports: eingebettete Bilder werden als eigene Dateien abgelegt; Report,
+   Bilder UND die Ordner-Zuordnung landen zusammen in EINEM Speicherstand.
+   Früher waren das zwei getrennte Schritte — wenn GitHub dazwischen noch den
+   alten Stand auslieferte, fehlte der Report oder landete im falschen Ordner. */
+let importing = false;
+async function importFiles(list) {
+  const files = [...list].filter(f => /\.html?$/i.test(f.name) || /html/.test(f.type));
   fileInput.value = '';
-  if (!/<body/i.test(html)) { toast('Das sieht nicht nach einer HTML-Datei aus.'); return; }
-  html = html.replace(/<link rel="stylesheet" href="\/assets\/editor\.css">\s*<script src="\/assets\/editor\.js" defer(?:="")?><\/script>/g, '');
+  if (!files.length) { addMsg('Bitte eine HTML-Datei wählen.', true); return; }
+  if (importing) { addMsg('Moment — es läuft noch ein Upload.', true); return; }
+  importing = true;
+  const folder = document.getElementById('addFolderSel').value;
   dropzone.classList.add('busy');
-  dropzone.dataset.msg = 'Wird hochgeladen …';
+  const done = [], failed = [];
   try {
-    const ex = await LH.extractImages(html);
-    const slug = slugify(file.name);
-    let fname = slug + '.html', i = 2;
+    addMsg('Bereite vor …');
+    if (layoutTimer || layoutBusy) await flushLayout();
     const tree = await LH.tree();
-    while (tree.has('lectures/' + fname)) fname = slug + '-' + (i++) + '.html';
-    await LH.commitFiles([...ex.files.filter(f => !tree.has(f.path)), { path: 'lectures/' + fname, text: ex.html }], 'Neu: ' + fname);
-    shaByFile.set(fname, 'neu');
-    if (!state.order[ROOT_ID]) state.order[ROOT_ID] = [];
-    (folder && state.order[folder] ? state.order[folder] : state.order[ROOT_ID]).push(fname);
-    await flushLayout();
-    addDlg.close();
-    toast('Hinzugefügt: ' + fname);
-    load();
+    for (let k = 0; k < files.length; k++) {
+      const file = files[k], pre = files.length > 1 ? '(' + (k + 1) + '/' + files.length + ') ' : '';
+      try {
+        let html = await file.text();
+        if (!/<body/i.test(html)) { failed.push(file.name + ': keine HTML-Seite'); continue; }
+        html = html.replace(/<link rel="stylesheet" href="\/assets\/editor\.css">\s*<script src="\/assets\/editor\.js" defer(?:="")?><\/script>/g, '');
+        const slug = slugify(file.name);
+        let fname = slug + '.html', replace = false;
+        if (tree.has('lectures/' + fname)) {
+          const choice = await askDuplicate(fname);
+          if (choice === 'cancel') continue;
+          if (choice === 'replace') replace = true;
+          else { let i = 2; while (tree.has('lectures/' + slug + '-' + i + '.html')) i++; fname = slug + '-' + i + '.html'; }
+        }
+        addMsg(pre + file.name + ': Bilder werden herausgelöst …');
+        const ex = await LH.extractImages(html);
+        const res = await LH.commitFiles(
+          [...ex.files.filter(f => !tree.has(f.path)), { path: 'lectures/' + fname, text: ex.html }],
+          (replace ? 'Ersetzt: ' : 'Neu: ') + fname,
+          {
+            progress: t => addMsg(pre + file.name + ': ' + t),
+            edits: [{ path: DATA_FILE, mutate: old => {
+              let d = null;
+              try { d = JSON.parse(old); } catch (e) {}
+              d = d && typeof d === 'object' ? d : defaultData();
+              if (!Array.isArray(d.folders)) d.folders = [];
+              if (!d.order || typeof d.order !== 'object') d.order = {};
+              const placed = Object.values(d.order).some(l => Array.isArray(l) && l.includes(fname));
+              if (!(replace && placed)) {   // beim Ersetzen bleibt der Report, wo er war
+                for (const key of Object.keys(d.order)) if (Array.isArray(d.order[key])) d.order[key] = d.order[key].filter(x => x !== fname);
+                const target = folder && d.folders.some(f => f.id === folder) ? folder : ROOT_ID;
+                (d.order[target] = Array.isArray(d.order[target]) ? d.order[target] : []).push(fname);
+                const fo = d.folders.find(f => f.id === target);
+                if (fo) fo.collapsed = false;
+              }
+              return JSON.stringify(d, null, 2);
+            } }]
+          });
+        for (const [p, sha] of res.shas) tree.set(p, sha);
+        done.push(fname);
+      } catch (e) {
+        if (e.status === 401) { LH.logout(); addDlg.close(); return showLogin('Dein Zugangsschlüssel ist ungültig oder abgelaufen. Bitte neu anmelden.'); }
+        failed.push(file.name + ': ' + (e.message || 'Upload fehlgeschlagen'));
+      }
+    }
   } catch (e) {
-    toast('Fehler: ' + (e.message || 'Import fehlgeschlagen'));
-  } finally { dropzone.classList.remove('busy'); }
+    failed.push(e.message || 'Upload fehlgeschlagen');
+  } finally {
+    importing = false;
+    dropzone.classList.remove('busy');
+  }
+  if (failed.length) addMsg('Nicht hochgeladen — ' + failed.join(' · '), true);
+  else { addMsg(''); addDlg.close(); }
+  if (done.length) {
+    toast(done.length === 1 ? 'Hochgeladen: ' + done[0] : done.length + ' Reports hochgeladen');
+    await load();
+    const card = board.querySelector('.card[data-file="' + CSS.escape(done[done.length - 1]) + '"]');
+    if (card) { card.scrollIntoView({ block: 'center', behavior: 'smooth' }); card.classList.add('just-added'); setTimeout(() => card.classList.remove('just-added'), 2400); }
+  }
 }
 
 /* ---------- Anmeldung ---------- */

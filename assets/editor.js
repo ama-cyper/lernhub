@@ -355,7 +355,7 @@
     toggleBtn.textContent = v ? 'Fertig' : 'Bearbeiten';
     toggleBtn.classList.toggle('on', v);
     safe(hideHoverOverlays, 'overlays');
-    if (v) { safe(repair, 'repair'); safe(() => UM.start(), 'verlauf'); }
+    if (v) { safe(() => linkify(false), 'links'); safe(repair, 'repair'); safe(() => UM.start(), 'verlauf'); }
     else {
       safe(() => UM.stop(), 'verlauf');
       safe(hideMenu, 'menu');
@@ -369,6 +369,7 @@
     }
     else safe(() => region.focus({ preventScroll: true }), 'fokus');
     safe(() => { if (typeof F2 !== 'undefined') { if (v) F2.unmount(); else F2.mount(); } }, 'altfragen');
+    if (!v) safe(() => linkify(true), 'links');
     safe(placeBar, 'leiste-pos');
   }
   /* Antippen am iPad: Die Bildschirmtastatur schließt beim ersten Tipp und
@@ -872,6 +873,8 @@
     });
     [clone, clone.querySelector('body')].forEach(n => { if (n && n.style && n.style.overflow === 'hidden') { n.style.removeProperty('overflow'); if (!n.getAttribute('style')) n.removeAttribute('style'); } });
     clone.querySelectorAll('img[draggable]').forEach(n => n.removeAttribute('draggable'));
+    // Report-Links: ursprünglichen, relativen Link speichern (nicht die Hub-Adresse).
+    clone.querySelectorAll('a[data-lh-href]').forEach(n => { n.setAttribute('href', n.getAttribute('data-lh-href')); n.removeAttribute('data-lh-href'); });
     // Bilder aus dem privaten Repo: wieder den echten, relativen Pfad eintragen.
     clone.querySelectorAll('img[data-gh-src]').forEach(n => { n.setAttribute('src', n.getAttribute('data-gh-src')); n.removeAttribute('data-gh-src'); });
     // Bild-Zoom, den das Report-Skript bei jedem Öffnen neu anlegt, nicht mitspeichern —
@@ -1077,8 +1080,9 @@
   /* Sprungziel aus dem Link (#abschnitt) anzeigen: umschließende Toggles
      öffnen, hinscrollen, kurz markieren. Zweiter Durchgang, weil nachladende
      Bilder darüber die Position noch verschieben können.                     */
-  (function jumpToHash() {
-    const id = decodeURIComponent((location.hash || '').slice(1));
+  function jumpTo(hash) {
+    let id = (hash || '').slice(1);
+    try { id = decodeURIComponent(id); } catch (e) {}
     if (!id) return;
     const t = document.getElementById(id);
     if (!t || t.hasAttribute('data-lr-ui')) return;
@@ -1090,7 +1094,56 @@
     ['wheel', 'touchmove', 'keydown'].forEach(ev => window.addEventListener(ev, stop, { once: true, passive: true }));
     setTimeout(() => { go(); t.classList.add('lh-flash'); setTimeout(() => t.classList.remove('lh-flash'), 2600); }, 120);
     setTimeout(() => { if (!userMoved) go(); }, 1400);
-  })();
+  }
+  jumpTo(location.hash);
+  window.addEventListener('hashchange', () => jumpTo(location.hash));
+
+  /* ---------- Links zwischen Reports ----------
+     Ein Report verweist z. B. mit <a href="00-altfragen-katalog-….html#q-479">
+     auf den Katalog. Diese Dateien liegen aber im PRIVATEN Repo, nicht auf der
+     öffentlichen Seite — der Browser landete deshalb auf der 404-Seite von
+     GitHub Pages. Solche Links zeigen jetzt im Lesemodus auf view.html?f=…
+     (funktioniert auch mit „In neuem Tab öffnen“ / langem Antippen). In der
+     Datei bleibt der ursprüngliche, kurze Link stehen.                      */
+  const LOCAL_LINK = /^(?:\.\/)?([^\/?#:\\]+\.html?)(?:\?[^#]*)?(#.*)?$/i;
+  function hubTarget(raw) {
+    const m = String(raw || '').trim().match(LOCAL_LINK);
+    if (!m) return null;
+    let f = m[1];
+    try { f = decodeURIComponent(f); } catch (e) {}
+    if (/^(index|view|exam|anleitung)\.html$/i.test(f)) return null;
+    return { f, hash: m[2] || '' };
+  }
+  const hubURL = t => LH.APP + 'view.html?f=' + encodeURIComponent(t.f) + t.hash;
+  function linkify(on) {
+    document.querySelectorAll(on ? 'a[href]:not([data-lh-href])' : 'a[data-lh-href]').forEach(a => {
+      if (a.closest('[data-lr-ui]')) return;
+      if (!on) { a.setAttribute('href', a.getAttribute('data-lh-href')); a.removeAttribute('data-lh-href'); return; }
+      const raw = a.getAttribute('href'), t = hubTarget(raw);
+      if (!t) return;
+      a.setAttribute('data-lh-href', raw);
+      a.setAttribute('href', t.f === DOC.file ? (t.hash || '#') : hubURL(t));
+    });
+  }
+  linkify(true);
+  // Sicherheitsnetz für Links, die ein Report-Skript erst später einfügt (z. B. Mindmap).
+  function onLocalLink(e) {
+    if (editing || e.defaultPrevented) return;
+    if (e.type === 'click' ? e.button !== 0 : e.button !== 1) return;
+    const a = e.target.closest && e.target.closest('a[href]:not([data-lh-href])');
+    if (!a || a.closest('[data-lr-ui]')) return;
+    const t = hubTarget(a.getAttribute('href'));
+    if (!t) return;
+    e.preventDefault();
+    if (t.f === DOC.file && e.type === 'click' && !(e.metaKey || e.ctrlKey || e.shiftKey)) {
+      if (t.hash) { if (location.hash === t.hash) jumpTo(t.hash); else location.hash = t.hash; }
+      return;
+    }
+    if (e.type === 'auxclick' || e.metaKey || e.ctrlKey || e.shiftKey || a.target === '_blank') window.open(hubURL(t), '_blank', 'noopener');
+    else location.href = hubURL(t);
+  }
+  document.addEventListener('click', onLocalLink);
+  document.addEventListener('auxclick', onLocalLink);
 
   /* Bilder, die nur als Sitzungs-Link gespeichert waren, sichtbar machen. */
   document.querySelectorAll('img[data-lh-missing]').forEach(img => {

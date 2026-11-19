@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <title>Lernreport-Hub</title>
-<link rel="stylesheet" href="assets/hub.css?v=3">
+<link rel="stylesheet" href="assets/hub.css?v=4">
 </head>
 <body>
 
@@ -76,13 +76,30 @@
       <span class="dz-ic" aria-hidden="true">📄</span>HTML-Datei hierher ziehen<br>
       <small>oder klicken zum Auswählen</small>
     </div>
-    <input type="file" id="fileInput" accept=".html,.htm" hidden>
+    <input type="file" id="fileInput" accept=".html,.htm" multiple hidden>
     <label class="fieldlabel" for="addFolderSel">In welchen Fachbereich?</label>
     <select class="field" id="addFolderSel"><option value="">Ohne Ordner</option></select>
+    <p class="add-status" id="addStatus" aria-live="polite"></p>
     <div class="dlg-row">
-      <button class="btn ghost" id="cancelAdd">Abbrechen</button>
+      <button class="btn ghost" id="cancelAdd">Schließen</button>
     </div>
   </div>
+</dialog>
+
+<!-- Dialog: gleichnamiger Report existiert schon -->
+<dialog id="dupDlg">
+  <form method="dialog" class="dlg-in">
+    <h3>Diesen Report gibt es schon</h3>
+    <p><b id="dupTitle"></b><br><code id="dupName"></code></p>
+    <p><b>Ersetzen</b> lädt die neue Fassung unter demselben Namen hoch: Ordner, Platz,
+      Verlinkungen zwischen Katalog und Reports und dein Fehlerlog bleiben erhalten.
+      Die alte Fassung bleibt im Versionsverlauf auf GitHub.</p>
+    <div class="dlg-row">
+      <button class="btn ghost" value="cancel" formnovalidate>Abbrechen</button>
+      <button class="btn" value="copy">Als Kopie</button>
+      <button class="btn primary" value="replace">Ersetzen</button>
+    </div>
+  </form>
 </dialog>
 
 <!-- Dialog: Ordner anlegen / umbenennen -->
@@ -143,7 +160,7 @@
   </form>
 </section>
 
-<script src="assets/gh.js?v=4"></script>
-<script src="assets/hub.js?v=3"></script>
+<script src="assets/gh.js?v=5"></script>
+<script src="assets/hub.js?v=4"></script>
 </body>
 </html>

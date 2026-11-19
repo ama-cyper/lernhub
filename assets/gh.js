@@ -76,12 +76,54 @@
     return res.status === 204 ? null : res.json();
   }
 
+  /* ---------- Eigene Schreibvorgänge merken ----------
+     GitHub liefert Dateiliste und Inhalte direkt nach einem Speichern oft noch
+     ein paar Sekunden alt aus. Genau daher kamen die Aussetzer beim Hochladen:
+     neuer Report fehlte im Hub, landete in „Ohne Ordner“ oder wurde beim
+     nächsten Sortieren wieder aus seinem Ordner geworfen. Deshalb merkt sich
+     jedes Gerät, was es selbst gerade geschrieben hat, und legt das für ein
+     paar Minuten über die (evtl. veraltete) Antwort von GitHub.            */
+  const RECENT_KEY = 'lh_recent', RECENT_MS = 5 * 60 * 1000;
+  function recentGet() {
+    let r = {};
+    try { r = JSON.parse(localStorage.getItem(RECENT_KEY)) || {}; } catch (e) {}
+    const now = Date.now();
+    for (const p of Object.keys(r)) if (!r[p] || now - r[p].t > RECENT_MS) delete r[p];
+    return r;
+  }
+  function recentSet(r) { try { localStorage.setItem(RECENT_KEY, JSON.stringify(r)); } catch (e) {} }
+  /* map: {pfad: neueSha} (null = gelöscht) · prev: {pfad: shaVorher} */
+  function remember(map, prev) {
+    const r = recentGet(), t = Date.now();
+    for (const [p, sha] of Object.entries(map)) r[p] = { sha: sha || null, prev: prev && p in prev ? (prev[p] || null) : undefined, t };
+    recentSet(r); treeP = null;
+  }
+  function forget(path) { const r = recentGet(); delete r[path]; recentSet(r); treeP = null; }
+
   /* Alle Dateien des Repos mit ihren Versionskennungen (sha). */
+  let treeP = null, treeAt = 0;
   async function tree() {
-    // Direkt über den Branch-Namen: eine Anfrage statt zwei.
-    const t = await api(`${R}/git/trees/${CFG.branch}?recursive=1`);
-    const map = new Map();
-    for (const e of t.tree) if (e.type === 'blob') map.set(e.path, e.sha);
+    if (!treeP || Date.now() - treeAt > 1500) {
+      treeAt = Date.now();
+      treeP = (async () => {
+        // Direkt über den Branch-Namen: eine Anfrage statt zwei.
+        const t = await api(`${R}/git/trees/${CFG.branch}?recursive=1`);
+        const map = new Map();
+        for (const e of t.tree) if (e.type === 'blob') map.set(e.path, e.sha);
+        return map;
+      })();
+      treeP.catch(() => { treeP = null; });
+    }
+    const map = new Map(await treeP);
+    const r = recentGet();
+    let changed = false;
+    for (const [p, e] of Object.entries(r)) {
+      const b = map.has(p) ? map.get(p) : null;
+      // GitHub zeigt schon unseren Stand — oder inzwischen einen neueren von woanders: Merkzettel weg.
+      if (b === e.sha || (e.prev !== undefined && b !== e.prev)) { delete r[p]; changed = true; continue; }
+      if (e.sha) map.set(p, e.sha); else map.delete(p);
+    }
+    if (changed) recentSet(r);
     return map;
   }
 
@@ -90,42 +132,56 @@
     return api(`${R}/contents/${encPath(path)}?ref=${CFG.branch}`, { accept: 'application/vnd.github.raw', raw: 'text' });
   }
 
+  /* JSON über die Dateiliste lesen (mit den eigenen, gerade geschriebenen
+     Ständen) — Inhalte per Versionskennung sind nie veraltet. */
   async function readJSON(path) {
-    try {
-      const j = await api(`${R}/contents/${encPath(path)}?ref=${CFG.branch}`);
-      return { data: JSON.parse(textFromB64(j.content)), sha: j.sha };
-    } catch (e) {
-      if (e.status === 404) return { data: null, sha: null };
-      throw e;
-    }
+    const sha = (await tree()).get(path);
+    if (!sha) return { data: null, sha: null };
+    const text = await readText(path, sha);
+    try { return { data: JSON.parse(text), sha }; }
+    catch (e) { throw new GHError(500, path + ' ist beschädigt (kein gültiges JSON)'); }
   }
 
   async function putText(path, text, sha, message) {
-    const j = await api(`${R}/contents/${encPath(path)}`, {
-      method: 'PUT',
-      body: { message, content: b64FromText(text), branch: CFG.branch, ...(sha ? { sha } : {}) }
-    });
+    let j;
+    try {
+      j = await api(`${R}/contents/${encPath(path)}`, {
+        method: 'PUT',
+        body: { message, content: b64FromText(text), branch: CFG.branch, ...(sha ? { sha } : {}) }
+      });
+    } catch (e) {
+      if (e.conflict) forget(path);   // eigener Merkzettel war überholt → beim nächsten Mal frisch lesen
+      throw e;
+    }
+    remember({ [path]: j.content.sha }, { [path]: sha || null });
     return j.content.sha;
   }
 
   /* Bilder heißen nach ihrem Inhalt — existiert die Datei schon, ist sie identisch. */
   async function putImage(path, b64) {
     try {
-      await api(`${R}/contents/${encPath(path)}`, {
+      const j = await api(`${R}/contents/${encPath(path)}`, {
         method: 'PUT', body: { message: 'Bild: ' + path.split('/').pop(), content: b64, branch: CFG.branch }
       });
+      remember({ [path]: j.content.sha }, { [path]: null });
     } catch (e) {
       if (e.status !== 409 && e.status !== 422) throw e;
     }
   }
 
   async function del(path, sha, message) {
-    await api(`${R}/contents/${encPath(path)}`, { method: 'DELETE', body: { message, sha, branch: CFG.branch } });
+    try {
+      await api(`${R}/contents/${encPath(path)}`, { method: 'DELETE', body: { message, sha, branch: CFG.branch } });
+    } catch (e) { if (e.conflict) forget(path); throw e; }
+    remember({ [path]: null }, { [path]: sha || null });
   }
 
-  /* JSON-Datei ändern: lesen → ändern → schreiben; bei Konflikt neu lesen und nochmal. */
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  /* JSON-Datei ändern: lesen → ändern → schreiben; bei Konflikt kurz warten,
+     neu lesen und nochmal. */
   async function updateJSON(path, mutate, message) {
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 5; i++) {
+      if (i) await sleep([0, 600, 1500, 3000, 5000][i]);
       const { data, sha } = await readJSON(path);
       const next = mutate(data);
       try {
@@ -136,19 +192,52 @@
     throw new GHError(409, 'Konnte nicht gespeichert werden (zu viele gleichzeitige Änderungen)');
   }
 
-  /* Mehrere Dateien in EINEM Speicherstand (Commit) ablegen. */
-  async function commitFiles(files, message) {
-    const ref = await api(`${R}/git/ref/heads/${CFG.branch}`);
-    const head = await api(`${R}/git/commits/${ref.object.sha}`);
-    const entries = [];
+  /* Mehrere Dateien in EINEM Speicherstand (Commit) ablegen.
+     opts.edits: [{path, mutate(alterInhaltOderNull) → neuerText}] — wird gegen
+       den Stand gelesen, auf den der Commit aufsetzt (z. B. hub-data.json), so
+       landen neuer Report und seine Ordner-Zuordnung garantiert gemeinsam.
+     opts.progress(text): Fortschritt für die Anzeige.
+     Hat sich der Branch zwischendurch bewegt, wird neu aufgesetzt statt
+     etwas zu überschreiben.                                                  */
+  async function commitFiles(files, message, opts = {}) {
+    const say = opts.progress || (() => {});
+    const blobShas = new Map();
+    let n = 0;
     for (const f of files) {
+      say('Lade hoch … ' + (++n) + '/' + files.length);
       const blob = await api(`${R}/git/blobs`, { method: 'POST',
         body: f.b64 != null ? { content: f.b64, encoding: 'base64' } : { content: f.text, encoding: 'utf-8' } });
-      entries.push({ path: f.path, mode: '100644', type: 'blob', sha: blob.sha });
+      blobShas.set(f.path, blob.sha);
     }
-    const t = await api(`${R}/git/trees`, { method: 'POST', body: { base_tree: head.tree.sha, tree: entries } });
-    const c = await api(`${R}/git/commits`, { method: 'POST', body: { message, tree: t.sha, parents: [ref.object.sha] } });
-    await api(`${R}/git/refs/heads/${CFG.branch}`, { method: 'PATCH', body: { sha: c.sha } });
+    for (let attempt = 0; attempt < 4; attempt++) {
+      if (attempt) await sleep(800 * attempt);
+      say('Speichere …');
+      const ref = await api(`${R}/git/ref/heads/${CFG.branch}`);
+      const head = await api(`${R}/git/commits/${ref.object.sha}`);
+      const shas = new Map(blobShas);
+      const base = await api(`${R}/git/trees/${head.tree.sha}?recursive=1`);
+      const before = new Map(base.tree.filter(e => e.type === 'blob').map(e => [e.path, e.sha]));
+      if (opts.edits && opts.edits.length) {
+        for (const ed of opts.edits) {
+          const cur = before.has(ed.path) ? { sha: before.get(ed.path) } : null;
+          const old = cur ? await readText(ed.path, cur.sha) : null;
+          const blob = await api(`${R}/git/blobs`, { method: 'POST', body: { content: ed.mutate(old), encoding: 'utf-8' } });
+          shas.set(ed.path, blob.sha);
+        }
+      }
+      const entries = [...shas].map(([path, sha]) => ({ path, mode: '100644', type: 'blob', sha }));
+      const t = await api(`${R}/git/trees`, { method: 'POST', body: { base_tree: head.tree.sha, tree: entries } });
+      const c = await api(`${R}/git/commits`, { method: 'POST', body: { message, tree: t.sha, parents: [ref.object.sha] } });
+      try {
+        await api(`${R}/git/refs/heads/${CFG.branch}`, { method: 'PATCH', body: { sha: c.sha } });
+      } catch (e) {
+        if (e.status === 422 || e.status === 409) continue;   // Branch hat sich bewegt → neu aufsetzen
+        throw e;
+      }
+      remember(Object.fromEntries(shas), Object.fromEntries([...shas.keys()].map(p => [p, before.get(p) || null])));
+      return { commit: c.sha, shas };
+    }
+    throw new GHError(409, 'Konnte nicht gespeichert werden (Repo hat sich währenddessen mehrfach geändert)');
   }
 
   /* ---------- Bilder: lazy aus dem privaten Repo laden ---------- */
@@ -291,7 +380,7 @@
   function logout() {
     store.del(KEY);
     try { caches.delete('lh-img-v1'); } catch (e) {}
-    try { Object.keys(localStorage).filter(k => k.startsWith('lh_draft:') || k === 'lh_meta').forEach(k => localStorage.removeItem(k)); } catch (e) {}
+    try { Object.keys(localStorage).filter(k => k.startsWith('lh_draft:') || k.startsWith('lh_links:') || k === 'lh_meta' || k === RECENT_KEY).forEach(k => localStorage.removeItem(k)); } catch (e) {}
   }
 
   /* ---------- Entwürfe (Sicherheitsnetz, falls das Speichern scheitert) ---------- */
@@ -305,7 +394,7 @@
   window.LH = {
     CFG, APP, PIXEL, GHError,
     token: () => store.get(KEY), login, logout, verify,
-    tree, readText, readJSON, putText, putImage, del, updateJSON, commitFiles,
+    tree, readText, readJSON, putText, putImage, del, updateJSON, commitFiles, forget,
     imageURL, hydrateImages, prefetchImages, loadAllImages, prepareImages, extractImages, adoptImage, adoptImages, hashName, gitSha,
     b64FromBytes, b64FromText, drafts,
     repoURL: `https://github.com/${CFG.owner}/${CFG.repo}`

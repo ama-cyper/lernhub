@@ -421,3 +421,11 @@ body.locked > :not(.login):not(.toast){display:none !important;}
 .dropzone.busy::after{content:attr(data-msg);display:block;margin-top:8px;font-weight:700;}
 .linkbtn{background:none;border:0;padding:0;font:inherit;color:var(--accent);font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:2px;}
 .wrap{overflow-x:clip;}
+
+/* Upload-Status im Dialog + kurzes Aufleuchten des neuen Reports */
+.add-status{min-height:1.4em;margin:12px 0 0;font-size:.86rem;color:var(--mut);}
+.add-status.bad{color:#c23b3b;font-weight:600;}
+.add-status:empty{display:none;}
+#dupDlg code{font-size:.82rem;word-break:break-all;}
+.card.just-added{animation:lhJust 2.4s ease-out;}
+@keyframes lhJust{0%,35%{box-shadow:0 0 0 3px var(--accent);}100%{box-shadow:0 0 0 0 transparent;}}
