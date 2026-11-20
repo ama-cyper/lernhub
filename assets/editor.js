@@ -847,6 +847,57 @@
   });
 
   /* ================= Speichern ================= */
+  /* Bildbetrachter (.rx / .ix): Das Report-Skript baut Zoom, Overlay-Zustand,
+     aktiven Reiter usw. bei jedem Öffnen neu auf. Dieser Laufzeit-Zustand
+     landete bisher beim Speichern mit in der Datei — danach öffnete die Karte
+     z. B. schon gezoomt, auf dem Reiter „Prüfungsfrage“ oder mit „act“, so dass
+     das Mausrad beim Scrollen das Bild zoomte statt die Seite zu bewegen.
+     Hier wird auf den Ausgangszustand zurückgesetzt; Inhalte bleiben unberührt. */
+  function resetViewers(root) {
+    const firstOn = (box, sel) => {
+      const items = [...box.querySelectorAll(sel)];
+      items.forEach((x, i) => x.classList.toggle('on', i === 0));
+    };
+    root.querySelectorAll('.rx').forEach(rx => {
+      rx.classList.remove('used', 'wh', 'cmp', 'cmpon', 'anim', 'fsx', 'rx-noov', 'rx-ovna');
+      rx.querySelectorAll('.rx-stage').forEach(n => n.classList.remove('act', 'drag'));
+      rx.querySelectorAll('.rx-cv, .rx-world').forEach(n => { n.style.removeProperty('transform'); n.style.removeProperty('transition'); n.style.removeProperty('filter'); n.style.removeProperty('width'); n.style.removeProperty('height'); });
+      rx.querySelectorAll('.rx-ov, .rx-ovw').forEach(n => { ['opacity', 'clip-path', '-webkit-clip-path', 'width', 'height'].forEach(p => n.style.removeProperty(p)); });
+      rx.querySelectorAll('.rx-cv img, .rx-world img').forEach(n => n.style.removeProperty('filter'));
+      rx.querySelectorAll('.rx-hdl, .rx-split').forEach(n => n.style.removeProperty('left'));
+      rx.querySelectorAll('button[disabled], input[disabled]').forEach(n => n.removeAttribute('disabled'));
+      rx.querySelectorAll('[aria-pressed]').forEach(n => n.setAttribute('aria-pressed', 'false'));
+      rx.querySelectorAll('.rx-op, .rx-opr').forEach(n => n.style.removeProperty('--p'));
+      rx.querySelectorAll('.rx-b-ov, .rx-ovb, .rx-b-cmp, .rx-cmp, .rx-chip').forEach(n => n.classList.remove('on'));
+      rx.querySelectorAll('.rx-chip.hid').forEach(n => n.classList.remove('hid'));
+      rx.querySelectorAll('.rx-adj').forEach(n => { n.classList.remove('on'); if (rx.querySelector('.rx-b-adj')) n.setAttribute('hidden', ''); });
+      // Bilder, die das Skript aus den eingebetteten Daten (.rx-data) setzt, nicht doppelt speichern.
+      if (rx.querySelector('script.rx-data')) rx.querySelectorAll('.rx-world img, .rx-th img').forEach(n => { n.removeAttribute('src'); n.removeAttribute('data-gh-src'); });
+      // Ausgangsbild und erster Reiter.
+      const cvs = rx.querySelectorAll('.rx-cv');
+      if (cvs.length) cvs.forEach((n, i) => n.classList.toggle('on', i === 0));
+      rx.querySelectorAll('.rx-th').forEach((n, i) => n.classList.toggle('on', i === 0));
+      firstOn(rx, '.rx-tab'); firstOn(rx, '.rx-pn'); firstOn(rx, '.rx-pane');
+      rx.querySelectorAll('.rx-li[data-v]').forEach(n => { if (n.getAttribute('data-v') === '0') n.removeAttribute('hidden'); });
+    });
+    /* Lernseiten mit Filterknöpfen (z. B. Unfallchirurgie): Ein beim Speichern
+       aktiver Filter versteckte dauerhaft alle anderen Lernkarten. */
+    const fbtn = root.querySelectorAll('.filter-btn[data-filter]');
+    if (fbtn.length) {
+      fbtn.forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-filter') === 'all' ? 'true' : 'false'));
+      root.querySelectorAll('.question-card[hidden], .lecture-section[hidden]').forEach(n => n.removeAttribute('hidden'));
+      const rl = root.getElementById ? root.getElementById('result-line') : root.querySelector('#result-line');
+      const nCards = root.querySelectorAll('.question-card').length;
+      if (rl && nCards) rl.textContent = nCards + (nCards === 1 ? ' Lernkarte' : ' Lernkarten') + ' sichtbar';
+      const em = root.querySelector('#empty'); if (em) em.style.display = 'none';
+      root.querySelectorAll('input#search').forEach(n => n.removeAttribute('value'));
+    }
+    root.querySelectorAll('.ix').forEach(ix => {
+      ix.classList.remove('ovon', 'ixna');
+      ix.querySelectorAll('.ixov').forEach(n => { n.classList.remove('on'); n.removeAttribute('disabled'); n.removeAttribute('hidden'); n.setAttribute('aria-pressed', 'false'); });
+      firstOn(ix, '.ixc'); firstOn(ix, '.ixs'); firstOn(ix, '.ixt'); firstOn(ix, '.ixp');
+    });
+  }
   function cleanDoc() {
     // In ein unsichtbares Dokument kopieren: dort lädt der Browser keine Bilder nach.
     const clone = document.implementation.createHTMLDocument('').importNode(document.documentElement, true);
@@ -863,14 +914,24 @@
     // Mindmap: Das Report-Skript zeichnet Knoten und Linien bei jedem Öffnen neu.
     // Die gezeichnete Fassung nie mitspeichern — sonst liegt nach jedem Speichern
     // eine weitere komplette Kopie aller Knoten (samt Bildern) in der Datei.
-    clone.querySelectorAll('section.mm').forEach(mm => {
-      mm.classList.remove('fsx');
-      mm.querySelectorAll('.mm-nodes, .mm-svg, .mm-pc').forEach(n => { n.textContent = ''; });
+    // Gilt für beide Mindmap-Bauarten (<section class="mm"> mit .mm-nodes und
+    // <div class="mm">, die ihre Knoten direkt in .mm-world zeichnet).
+    clone.querySelectorAll('.mm').forEach(mm => {
+      mm.classList.remove('fsx', 'searching');
+      mm.querySelectorAll('.mm-nodes, .mm-svg, .mm-pc, .mm-pb, .mm-hits').forEach(n => { n.textContent = ''; });
+      mm.querySelectorAll('.mm-world > .mm-n').forEach(n => n.remove());
+      mm.querySelectorAll('.mm-world').forEach(n => n.removeAttribute('style'));
+      mm.querySelectorAll('.mm-panel').forEach(n => { n.classList.remove('on'); n.style.removeProperty('top'); });
+      mm.querySelectorAll('.mm-vp').forEach(n => n.classList.remove('drag'));
+      mm.querySelectorAll('.mm-q').forEach(n => { n.removeAttribute('value'); });
       mm.querySelectorAll('.mm-cv').forEach(n => n.removeAttribute('style'));
       mm.querySelectorAll('.mm-pnl').forEach(n => n.classList.remove('on'));
       mm.querySelectorAll('.mm-stage').forEach(n => n.classList.remove('act', 'drag'));
       mm.querySelectorAll('.mm-fsclose').forEach(n => n.remove());
     });
+    resetViewers(clone);
+    // Lupen-Mauszeiger setzt der Editor nur fürs Anschauen — nicht speichern.
+    clone.querySelectorAll('img[style*="cursor"]').forEach(n => { n.style.removeProperty('cursor'); });
     [clone, clone.querySelector('body')].forEach(n => { if (n && n.style && n.style.overflow === 'hidden') { n.style.removeProperty('overflow'); if (!n.getAttribute('style')) n.removeAttribute('style'); } });
     clone.querySelectorAll('img[draggable]').forEach(n => n.removeAttribute('draggable'));
     // Report-Links: ursprünglichen, relativen Link speichern (nicht die Hub-Adresse).
@@ -903,7 +964,7 @@
     saving = true;
     const myRev = rev;
     try {
-      const pending = document.querySelectorAll('img[src^="blob:"]:not([data-gh-src]), img[src^="data:"]:not([data-gh-src]):not([data-lh-missing])').length;
+      const pending = [...document.querySelectorAll('img[src^="blob:"]:not([data-gh-src]), img[src^="data:"]:not([data-gh-src]):not([data-lh-missing])')].filter(i => !i.closest('[data-lr-ui], .mm-nodes, .mm-pc, .rx-world, .rx-th, .rx-thumbs')).length;
       if (pending) { statusEl.textContent = 'Lade Bilder hoch …'; await LH.adoptImages(document); }
     } catch (err) {
       saving = false;
@@ -1199,8 +1260,25 @@
   const lbImg = lightbox.querySelector('img');
   const lbCap = lightbox.querySelector('.lr-lb-cap');
 
+  /* Bilder in interaktiven Bildbetrachtern (.rx), Mindmaps (.mm) und
+     Vorschauleisten gehören dem Report-Skript: Ziehen, Zoomen und Overlay
+     regelt dort der Betrachter selbst. Früher fing der Editor auch diese
+     Klicks ab und öffnete die Lightbox — die Karte „zoomte“ dann, statt das
+     Overlay zu zeigen.                                                      */
+  const VIEWER_IMG = '.rx, .mm, .rx-th, .rx-thumbs';
   function isContentImg(node) {
-    return node && node.tagName === 'IMG' && inRegion(node);
+    return node && node.tagName === 'IMG' && inRegion(node) && !node.closest(VIEWER_IMG);
+  }
+  /* Einfache Bildkarten (.ix): Ist dort das Overlay an, zeigt auch die
+     Großansicht das Bild mit Overlay. */
+  function lightboxSrc(img) {
+    const w = img.closest('.ixw'), ix = img.closest('.ix');
+    if (w && ix && ix.classList.contains('ovon')) {
+      const o = w.querySelector('.ixo');
+      if (o && o.naturalWidth > 1) return o.currentSrc || o.src;
+    }
+    if (w) { const r = w.querySelector('.ixr'); if (r) return r.currentSrc || r.src; }
+    return img.currentSrc || img.src;
   }
   function positionZoomHint(img) {
     const r = img.getBoundingClientRect();
@@ -1239,7 +1317,18 @@
     const fig = e.target.closest('figure');
     const capEl = fig && fig.querySelector('figcaption');
     const cap = capEl ? capEl.textContent.trim() : (e.target.getAttribute('alt') || '');
-    openLightbox(e.target.currentSrc || e.target.src, cap);
+    openLightbox(lightboxSrc(e.target), cap);
+  }, true);
+
+  /* Bildbetrachter (.rx): Ein Doppelklick bzw. schnelles Doppeltippen auf
+     Werkzeugleiste, Regler, Legende oder Reiter darf nie als „Lupe“ auf der
+     Bühne ankommen. Ältere Reports zoomten sonst auf 240 %, sobald man das
+     Overlay zweimal kurz hintereinander an- und ausschaltete.               */
+  document.addEventListener('dblclick', e => {
+    const t = e.target;
+    if (t && t.closest && t.closest('.rx-tb, .rx-adj, .rx-op, .rx-leg, .rx-li, .rx-chip, .rx-tabs, .rx-tab, .rx-nav, .rx-prev, .rx-next, .rx-th, .rx-hk, .rx-grip')) {
+      e.stopPropagation();
+    }
   }, true);
   lightbox.addEventListener('click', e => {
     if (e.target === lightbox || e.target.closest('.lr-lb-close')) closeLightbox();

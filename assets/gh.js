@@ -332,9 +332,13 @@
     img._lhAdopt.finally(() => { img._lhAdopt = null; });
     return img._lhAdopt;
   }
+  /* Bilder, die ein Report-Skript bei jedem Öffnen selbst einsetzt (Mindmap-
+     Knoten, Bildbetrachter mit eingebetteten Daten), werden nicht gespeichert
+     und deshalb auch nicht hochgeladen. */
+  const SCRIPT_IMG = '.mm-nodes, .mm-pc, .rx-world, .rx-th, .rx-thumbs';
   async function adoptImages(root) {
     const imgs = [...(root || document).querySelectorAll('img[src^="blob:"]:not([data-gh-src]), img[src^="data:"]:not([data-gh-src]):not([data-lh-missing])')]
-      .filter(i => i.getAttribute('src') !== PIXEL && !i.closest('[data-lr-ui]'));
+      .filter(i => i.getAttribute('src') !== PIXEL && !i.closest('[data-lr-ui]') && !i.closest(SCRIPT_IMG));
     let n = 0;
     for (const i of imgs) if (await adoptImage(i)) n++;
     return n;
